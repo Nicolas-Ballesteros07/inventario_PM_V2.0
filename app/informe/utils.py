@@ -13,6 +13,7 @@ from .utils_cache import CACHE_KEY_BAJO_DURACION, CACHE_TIMEOUT
 from openpyxl import load_workbook
 from django.db import transaction
 from datetime import datetime, date
+from django.db.models import Prefetch
 #========================================================
 # UTILIDADES PARA PROCESAR LOS ARCHIVOS DE EXCEL DEL INFORME
 #========================================================
@@ -616,11 +617,6 @@ def procesar_archivo_compras(archivo):
 # UTILS PARA LA VISUALIZACION DE PRODUCTOS EN BAJO STOCK O SIN STOCK 
 #====================================================================
 def obtener_productos_bajo_duracion(umbral=1.0):
-    """
-    Retorna productos con duración menor al umbral, junto con sus
-    últimas 3 compras. Usa caché; se invalida al subir informe,
-    cargar compras, o modificar productos.
-    """
     resultados = cache.get(CACHE_KEY_BAJO_DURACION)
     if resultados is not None:
         return resultados
@@ -643,10 +639,25 @@ def obtener_productos_bajo_duracion(umbral=1.0):
         .order_by('producto__codigo_mantis')
     )
 
+    # Traemos TODAS las compras de los productos relevantes en UNA sola query
+    producto_ids = [d.producto_id for d in detalles]
+    compras_por_producto = {}
+    todas_compras = (
+        Compra.objects
+        .filter(producto_id__in=producto_ids)
+        .order_by('producto_id', '-fecha_compra')
+    )
+    for c in todas_compras:
+        lista = compras_por_producto.setdefault(c.producto_id, [])
+        if len(lista) < 3:
+            lista.append(c)
+
     resultados = []
     for d in detalles:
-        compras = list(d.producto.compras.order_by('-fecha_compra')[:3])
-        resultados.append({'detalle': d, 'compras': compras})
+        resultados.append({
+            'detalle': d,
+            'compras': compras_por_producto.get(d.producto_id, [])
+        })
 
     cache.set(CACHE_KEY_BAJO_DURACION, resultados, CACHE_TIMEOUT)
     return resultados
