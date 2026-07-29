@@ -1,0 +1,631 @@
+{% load formato_decimales %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Productos con Baja Duración</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&display=swap');
+
+        :root{
+            --azul-oscuro:#162b47;
+            --azul-medio:#105788;
+            --rojo:#e51148;
+            --gris:#e0e5e5;
+            --blanco:#ffffff;
+            --negro:#000000;
+            --sombra: 0 4px 14px rgba(22,43,71,0.12);
+            --gris-claro:#f0f2f5;
+            --cat-a-bg: rgba(46, 204, 113, 0.2);
+            --cat-a-text: #1e8449;
+            --cat-b-bg: rgba(241, 196, 15, 0.25);
+            --cat-b-text: #9a7d0a;
+            --cat-c-bg: rgba(230, 81, 0, 0.22);
+            --cat-c-text: #c0392b;
+            --cat-sin-bg: rgba(149, 165, 166, 0.2);
+            --cat-sin-text: #5d6d7e;
+        }
+
+        *{ box-sizing:border-box; }
+        html, body{ height:100%; overflow:hidden; }
+
+        body{
+            font-family:'Nunito Sans', Calibri, Arial, sans-serif;
+            margin:0; padding:0;
+            background: linear-gradient(180deg, #f4f6f7 0%, var(--gris) 100%);
+            color: var(--negro);
+        }
+
+        .contenido{
+            margin-left:260px; height:100vh;
+            padding:24px 40px 20px;
+            display:flex; flex-direction:column; min-height:0;
+        }
+
+        /* ===== HEADER ===== */
+        .header-informe{
+            background: var(--blanco); border-radius:14px; padding:16px 24px;
+            box-shadow: var(--sombra); margin:0 0 16px 0; flex-shrink:0;
+            display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+            animation: fadeSlideDown .5s ease both;
+        }
+        .header-informe-izq{ display:flex; flex-direction:column; gap:4px; }
+
+        h1{
+            font-weight:800; color: var(--azul-oscuro);
+            letter-spacing:-0.5px; font-size:26px; margin:0;
+            display:flex; align-items:center; gap:12px;
+        }
+        h1 svg{ color: var(--rojo); }
+
+        .periodo-ventas{
+            font-size:13px; color:#5d6d7e; font-weight:600; margin:0;
+        }
+        .periodo-ventas strong{ color: var(--azul-oscuro); }
+
+        .header-informe-der{
+            text-align:right; font-size:12.5px; color:#8a949c; font-weight:600;
+            white-space:nowrap; flex-shrink:0; padding-top:2px;
+        }
+        .header-informe-der strong{ color: var(--azul-oscuro); display:block; font-size:13px; margin-bottom:2px; }
+
+        /* ===== CARDS ===== */
+        .resumen-cards{
+            display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap:12px; margin: 0 0 16px; flex-shrink:0;
+        }
+        .card-resumen{
+            position:relative; overflow:hidden; border-radius:14px; color:var(--blanco);
+            padding:14px 16px; box-shadow: var(--sombra);
+            animation: popIn .45s cubic-bezier(.2,.8,.2,1) both;
+            transition: transform .2s ease, box-shadow .2s ease; cursor:default;
+        }
+        .card-resumen:hover{ transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.18); }
+        .card-resumen:nth-child(1){ animation-delay:.05s; }
+        .card-resumen:nth-child(2){ animation-delay:.1s; }
+        .card-resumen:nth-child(3){ animation-delay:.15s; }
+        .card-resumen:nth-child(4){ animation-delay:.2s; }
+        .card-resumen:nth-child(5){ animation-delay:.25s; }
+
+        .card-resumen .icon-wrap{
+            width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+            background: rgba(255,255,255,0.18); border-radius:8px; margin-bottom:8px;
+        }
+        .card-resumen .icon-wrap svg{ width:17px; height:17px; }
+        .card-resumen .numero{ font-size:22px; font-weight:800; display:block; line-height:1; }
+        .card-resumen .etiqueta{ font-size:12px; opacity:.9; font-weight:600; margin-top:4px; display:block; }
+
+        .card-total{ background: var(--azul-oscuro); }
+        .card-cat-a{ background: #1e8449; }
+        .card-cat-b{ background: #9a7d0a; }
+        .card-cat-c{ background: #c0392b; }
+        .card-sin{ background: #5d6d7e; }
+
+        /* ===== MENÚ FLOTANTE ===== */
+        .menu-acciones-wrap{
+            position:fixed; bottom:30px; right:30px; z-index:950;
+            display:flex; align-items:center;
+        }
+        .btn-hamburguesa{
+            position:relative; background: var(--azul-oscuro); color:var(--blanco); border:none;
+            border-radius:50%; width:58px; height:58px; display:flex; align-items:center; justify-content:center;
+            cursor:pointer; box-shadow: 0 6px 16px rgba(22,43,71,0.4);
+            transition: transform .25s ease, background .2s ease;
+        }
+        .btn-hamburguesa:hover{ background: var(--azul-medio); transform: scale(1.06); }
+        .btn-hamburguesa.abierto{ transform: rotate(90deg); background: var(--rojo); }
+        .btn-hamburguesa svg{ width:24px; height:24px; }
+
+        .tooltip-acciones{
+            position:absolute; right:70px; bottom:18px; background: var(--azul-oscuro); color:var(--blanco);
+            font-size:13px; font-weight:700; padding:7px 12px; border-radius:8px; white-space:nowrap;
+            opacity:0; visibility:hidden; transform: translateX(6px);
+            transition: opacity .18s ease, transform .18s ease, visibility .18s; pointer-events:none;
+        }
+        .menu-acciones-wrap:hover .tooltip-acciones{ opacity:1; visibility:visible; transform: translateX(0); }
+
+        .menu-flotante{
+            opacity:0; visibility:hidden; transform: translateY(10px) scale(.95); transform-origin: bottom right;
+            position:fixed; bottom:98px; right:30px; z-index:950;
+            display:flex; flex-direction:column; align-items:flex-end; gap:10px;
+            transition: opacity .2s ease, transform .2s ease, visibility .2s;
+        }
+        .menu-flotante.visible{ opacity:1; visibility:visible; transform: translateY(0) scale(1); }
+
+        .accion-item{
+            display:flex; align-items:center; gap:10px;
+        }
+        .accion-item .accion-label{
+            background: var(--azul-oscuro); color:var(--blanco); font-size:13px; font-weight:700;
+            padding:7px 12px; border-radius:8px; white-space:nowrap; box-shadow: var(--sombra);
+            opacity:0; transform: translateX(6px); pointer-events:none;
+            transition: opacity .18s ease, transform .18s ease;
+        }
+        .accion-item:hover .accion-label{ opacity:1; transform: translateX(0); }
+
+        .menu-flotante button, .menu-flotante a{
+            display:flex; align-items:center; justify-content:center;
+            width:50px; height:50px; border-radius:50%; border:none;
+            background: var(--blanco); color: var(--azul-medio); text-decoration:none; cursor:pointer;
+            box-shadow: 0 4px 14px rgba(22,43,71,0.22);
+            transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s ease, background .2s ease, color .2s ease;
+        }
+        .menu-flotante button svg, .menu-flotante a svg{ width:20px; height:20px; }
+        .menu-flotante button:hover, .menu-flotante a:hover{
+            transform: scale(1.15);
+            background: var(--azul-medio); color: var(--blanco);
+            box-shadow: 0 8px 20px rgba(16,87,136,0.4);
+        }
+
+        /* ===== SIDEBAR (igual) ===== */
+        @keyframes fadeSlideDown{ from{ opacity:0; transform:translateY(-12px); } to{ opacity:1; transform:translateY(0); } }
+        @keyframes fadeSlideUp{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:translateY(0); } }
+        @keyframes popIn{ from{ opacity:0; transform:scale(.92); } to{ opacity:1; transform:scale(1); } }
+        @keyframes fadeSlideRight{ from{ opacity:0; transform:translateX(-14px); } to{ opacity:1; transform:translateX(0); } }
+
+        .sidebar{
+            position:fixed; top:0; left:0; width:260px; height:100vh;
+            background: var(--azul-oscuro); display:flex; flex-direction:column;
+            padding:16px 18px; box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+            z-index:900; overflow-y:auto; transition: transform .25s ease;
+        }
+        .sidebar-brand{
+            display:flex; align-items:center; gap:10px; color:var(--blanco);
+            font-weight:800; font-size:19px; padding:6px 12px 18px;
+            border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:16px;
+        }
+        .sidebar-brand svg{ color: var(--rojo); width:22px; height:22px; }
+
+        .nav-bar{ display:flex; flex-direction:column; gap:8px; flex:1; }
+        .nav-version{
+            margin-top:auto; padding:14px 12px 6px;
+            color: rgba(255,255,255,0.62); font-size:12px; font-weight:700;
+            letter-spacing:.3px; text-align:center;
+            border-top:1px solid rgba(255,255,255,0.12);
+        }
+        .nav-link{
+            display:flex; align-items:center; gap:14px; padding:14px 16px;
+            border-radius:12px; text-decoration:none; font-weight:700; font-size:16px;
+            letter-spacing:.2px; color: rgba(255,255,255,0.78); background: transparent;
+            border-left:3px solid transparent; position:relative; overflow:hidden; isolation:isolate;
+            transition: color .25s ease, transform .25s ease, border-color .25s ease;
+            animation: fadeSlideRight .45s ease both;
+        }
+        .nav-bar .nav-link:nth-child(1){ animation-delay:.04s; }
+        .nav-bar .nav-link:nth-child(2){ animation-delay:.08s; }
+        .nav-bar .nav-link:nth-child(3){ animation-delay:.12s; }
+        .nav-bar .nav-link:nth-child(4){ animation-delay:.16s; }
+        .nav-bar .nav-link:nth-child(5){ animation-delay:.20s; }
+        .nav-bar .nav-link:nth-child(6){ animation-delay:.24s; }
+
+        .nav-link::before{
+            content:""; position:absolute; inset:0; z-index:-1;
+            background: linear-gradient(120deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 45%, rgba(255,255,255,0) 60%);
+            transform: translateX(-100%); transition: transform .55s cubic-bezier(.2,.8,.2,1);
+        }
+        .nav-link::after{
+            content:""; position:absolute; inset:0; z-index:-2;
+            background: rgba(255,255,255,0.06); opacity:0; transition: opacity .25s ease;
+        }
+        .nav-link:hover{ color: var(--blanco); transform: translateX(4px); }
+        .nav-link:hover::before{ transform: translateX(100%); }
+        .nav-link:hover::after{ opacity:1; }
+        .nav-link:hover svg{ transform: scale(1.12); filter: drop-shadow(0 0 6px rgba(229,17,72,0.55)); }
+
+        .nav-link.activo{
+            background: var(--azul-medio); color: var(--blanco); border-left-color: var(--rojo);
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset, 0 4px 14px rgba(16,87,136,0.35);
+        }
+        .nav-link.activo:hover{ transform: translateX(2px); }
+        .nav-link svg{ width:20px; height:20px; stroke-width:2.2; flex-shrink:0; transition: transform .25s ease, filter .25s ease; }
+
+        .btn-toggle-sidebar{
+            display:none; position:fixed; top:16px; left:16px; z-index:960;
+            background: var(--azul-oscuro); color:var(--blanco); border:none; border-radius:10px;
+            width:44px; height:44px; align-items:center; justify-content:center;
+            box-shadow: var(--sombra); cursor:pointer;
+        }
+
+        @media (max-width:900px){
+            .sidebar{ transform: translateX(-100%); }
+            .sidebar.abierto{ transform: translateX(0); }
+            .contenido{ margin-left:0; padding-top:80px; }
+            .btn-toggle-sidebar{ display:flex; }
+        }
+
+        /* ===== TABLA Y PAGINACIÓN ===== */
+        .tabla-scroll{ flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; border-radius:14px; box-shadow: var(--sombra); }
+        table{
+            table-layout:fixed; border-collapse:separate; border-spacing:0; width:100%; background:var(--blanco);
+            border-radius:14px; overflow:hidden; animation: fadeSlideUp .5s ease .15s both;
+        }
+        th, td{ padding:8px 6px; text-align:center; font-size:12px; overflow-wrap:break-word; word-break:break-word; }
+        th{
+            background: var(--azul-oscuro); color:var(--blanco); font-weight:700; text-transform:uppercase;
+            font-size:10px; letter-spacing:.2px; position:sticky; top:0;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        tbody tr.fila-principal{ transition: background .15s ease; }
+        tbody tr.fila-principal:nth-child(even){ background:#f7f9fa; }
+        tbody tr.fila-principal:hover{ background:#eaf2f8; }
+        td{ border-bottom:1px solid #eef1f1; color:var(--negro); }
+
+        .duracion-baja{ font-weight:800; color: var(--rojo); }
+
+        .btn-flecha{
+            background:none; border:none; cursor:pointer; font-size:14px; color: var(--azul-medio);
+            transition: transform .2s ease;
+        }
+        .btn-flecha.abierta{ transform: rotate(90deg); }
+
+        tr.fila-proveedor-extra{ display:none; background:#f4f6f8; animation: fadeSlideUp .25s ease both; }
+        tr.fila-proveedor-extra td{ font-size:12px; color:#5d6d7e; }
+
+        .badge-categoria{
+            display:inline-block; padding:4px 10px; border-radius:20px;
+            font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.3px;
+        }
+        .badge-categoria.cat-a{ background: var(--cat-a-bg); color: var(--cat-a-text); }
+        .badge-categoria.cat-b{ background: var(--cat-b-bg); color: var(--cat-b-text); }
+        .badge-categoria.cat-c{ background: var(--cat-c-bg); color: var(--cat-c-text); }
+        .badge-categoria.cat-sin{ background: var(--cat-sin-bg); color: var(--cat-sin-text); }
+
+        .pagination-wrap{
+            display:flex; align-items:center; justify-content:center; gap:16px;
+            padding:12px 0 4px; flex-shrink:0;
+        }
+        .page-btn{
+            display:flex; align-items:center; justify-content:center; width:36px; height:36px;
+            border:none; border-radius:8px; background: var(--azul-oscuro); color:var(--blanco);
+            cursor:pointer; transition: background .18s ease, opacity .18s ease;
+        }
+        .page-btn:hover{ background: var(--azul-medio); }
+        .page-btn:disabled{ opacity:.4; cursor:not-allowed; background: var(--azul-oscuro); }
+        .page-btn svg{ width:18px; height:18px; }
+        .pagination-info{ font-size:13px; font-weight:700; color: var(--azul-oscuro); }
+
+        /* Barra de búsqueda */
+        .search-container{
+            display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-shrink:0;
+        }
+        .search-wrap{
+            position:relative; flex:1 1 280px; max-width:380px;
+        }
+        .search-wrap svg{
+            position:absolute; left:14px; top:50%; transform:translateY(-50%);
+            width:18px; height:18px; color: var(--azul-medio); pointer-events:none;
+        }
+        .search-wrap input{
+            padding:10px 16px 10px 42px; border:1px solid #d8dcdd; border-radius:50px;
+            width:100%; font-size:15px; font-family:inherit;
+            transition: box-shadow .2s ease, border-color .2s ease; background: var(--blanco);
+        }
+        .search-wrap input:focus{
+            border-color: var(--azul-medio); outline:none;
+            box-shadow: 0 0 0 4px rgba(16,87,136,0.15);
+        }
+
+        ::-webkit-scrollbar{ width:10px; height:10px; }
+        ::-webkit-scrollbar-thumb{ background: var(--azul-medio); border-radius:10px; }
+
+        @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
+        @media (max-width:640px){
+            body{ padding:20px 16px 100px; }
+            th, td{ font-size:12px; padding:8px; }
+        }
+    </style>
+</head>
+<body>
+
+    <button id="btnToggleSidebar" class="btn-toggle-sidebar" aria-label="Abrir menú">
+        <i data-lucide="menu"></i>
+    </button>
+
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand"><i data-lucide="clipboard-list"></i> Inventario</div>
+        <div class="nav-bar">
+            <a href="{% url 'informe' %}" class="nav-link"><i data-lucide="bar-chart-3"></i> Informe</a>
+            <a href="{% url 'lista_productos' %}" class="nav-link"><i data-lucide="package"></i> Productos</a>
+            <a href="{% url 'productos_excluidos' %}" class="nav-link"><i data-lucide="ban"></i> Excluidos</a>
+            <a href="{% url 'compras_lista' %}" class="nav-link"><i data-lucide="shopping-cart"></i> Cargar Compras</a>
+            <a href="{% url 'productos_bajo_duracion' %}" class="nav-link activo"><i data-lucide="alert-triangle"></i> Productos a Comprar</a>
+            <a href="{% url 'categorizacion' %}" class="nav-link"><i data-lucide="tags"></i> Categorización</a>
+            <a href="{% url 'lista_vencimientos' %}" class="nav-link "><i data-lucide="calendar-clock"></i> Vencimientos</a>
+        </div>
+        <div class="nav-version">version 2.0</div>
+    </nav>
+
+    <div class="contenido">
+
+        <!-- ===== HEADER ===== -->
+        <div class="header-informe">
+            <div class="header-informe-izq">
+                <h1><i data-lucide="alert-triangle"></i> Productos con Duración menor a 1.0</h1>
+                <p class="periodo-ventas"><strong>Última actualización:</strong> {% now "d/m/Y H:i" %}</p>
+            </div>
+            <div class="header-informe-der">
+                <strong>{{ productos|length }} productos</strong>
+                en lista
+            </div>
+        </div>
+
+        <!-- ===== CARDS RESUMEN ===== -->
+        <div class="resumen-cards">
+            <div class="card-resumen card-total">
+                <div class="icon-wrap"><i data-lucide="layers"></i></div>
+                <span class="numero">{{ productos|length }}</span>
+                <span class="etiqueta">Total productos</span>
+            </div>
+        </div>
+
+        <!-- ===== BÚSQUEDA ===== -->
+        <div class="search-container">
+            <div class="search-wrap">
+                <i data-lucide="search"></i>
+                <input type="text" id="searchInput" placeholder="Buscar por código o nombre...">
+            </div>
+        </div>
+
+        <!-- ===== TABLA ===== -->
+        <div class="tabla-scroll">
+        <table>
+            <colgroup>
+                <col style="width:4%"><col style="width:12%"><col style="width:26%"><col style="width:10%">
+                <col style="width:12%"><col style="width:12%"><col style="width:10%"><col style="width:8%">
+                <col style="width:10%">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th>Duración</th>
+                    <th>Cantidad a Solicitar</th>
+                    <th>Proveedor</th>
+                    <th>Categoría</th>
+                    <th>Análisis</th>
+                    <th>Fecha de Compra</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in productos %}
+                {% with detalle=item.detalle compras=item.compras %}
+                <tr class="fila-principal" data-search="{{ detalle.producto.codigo_mantis }} {{ detalle.producto.descripcion|lower }}">
+                    <td>
+                        {% if compras|length > 1 %}
+                        <button class="btn-flecha" data-target="extra-{{ forloop.counter }}">&#9654;</button>
+                        {% endif %}
+                    </td>
+                    <td>{{ detalle.producto.codigo_mantis }}</td>
+                    <td style="text-align:left;">{{ detalle.producto.descripcion }}</td>
+                    <td class="duracion-baja">{{ detalle.duracion|sin_ceros:1 }}</td>
+                    <td>{{ detalle.solicitar|sin_ceros:2 }}</td>
+
+                    {% if compras %}
+                        <td>{{ compras.0.proveedor }}</td>
+                        <td>
+                            {% if item.categorizacion %}
+                                <span class="badge-categoria cat-{{ item.categorizacion.tipo_categoria|lower }}">
+                                    {{ item.categorizacion.get_tipo_categoria_display }}
+                                </span>
+                            {% else %}
+                                <span class="badge-categoria cat-sin">Sin categoría</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.categorizacion.analisis|default:"" }}</td>
+                        <td>{{ compras.0.fecha_compra|date:"d/m/Y" }}</td>
+                    {% else %}
+                        <td>Sin proveedor</td>
+                        <td>
+                            {% if item.categorizacion %}
+                                <span class="badge-categoria cat-{{ item.categorizacion.tipo_categoria|lower }}">
+                                    {{ item.categorizacion.get_tipo_categoria_display }}
+                                </span>
+                            {% else %}
+                                <span class="badge-categoria cat-sin">Sin categoría</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.categorizacion.analisis|default:"" }}</td>
+                        <td>—</td>
+                    {% endif %}
+                </tr>
+
+                {% for c in compras %}
+                    {% if not forloop.first %}
+                    <tr class="fila-proveedor-extra grupo-{{ forloop.parentloop.counter }}" id="extra-{{ forloop.parentloop.counter }}-{{ forloop.counter0 }}">
+                        <td></td>
+                        <td colspan="4" style="text-align:right;">Proveedor anterior:</td>
+                        <td>{{ c.proveedor }}</td>
+                        <td></td>
+                        <td></td>
+                        <td>{{ c.fecha_compra|date:"d/m/Y" }}</td>
+                    </tr>
+                    {% endif %}
+                {% endfor %}
+
+                {% endwith %}
+            {% empty %}
+                <tr><td colspan="9">No hay productos con duración menor a 1.0.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+
+        <!-- ===== PAGINACIÓN ===== -->
+        <div class="pagination-wrap" id="paginationWrap">
+            <button type="button" class="page-btn" id="btnPrevPage"><i data-lucide="chevron-left"></i></button>
+            <span class="pagination-info" id="paginationInfo"></span>
+            <button type="button" class="page-btn" id="btnNextPage"><i data-lucide="chevron-right"></i></button>
+        </div>
+
+    </div>
+
+    <!-- ===== MENÚ FLOTANTE ===== -->
+    <div class="menu-acciones-wrap">
+        <button id="btnMenu" class="btn-hamburguesa" aria-label="Abrir menú de acciones">
+            <i data-lucide="menu"></i>
+        </button>
+        <span class="tooltip-acciones">Acciones</span>
+    </div>
+    <div id="menuFlotante" class="menu-flotante">  
+        <!-- Descargar Excel -->
+        <div class="accion-item">
+            <span class="accion-label">Descargar Excel</span>
+            <a href="{% url 'reporte_excel_productos' %}" download><i data-lucide="download"></i></a>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // ===== SIDEBAR =====
+        const sidebar = document.getElementById('sidebar');
+        const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+        btnToggleSidebar.onclick = function(e){
+            e.stopPropagation();
+            sidebar.classList.toggle('abierto');
+        }
+        document.addEventListener('click', function(e){
+            if (window.innerWidth <= 900 && sidebar.classList.contains('abierto')
+                && !sidebar.contains(e.target) && e.target !== btnToggleSidebar) {
+                sidebar.classList.remove('abierto');
+            }
+        });
+
+        // ===== MENÚ FLOTANTE =====
+        const btnMenu = document.getElementById('btnMenu');
+        const menuFlotante = document.getElementById('menuFlotante');
+
+        function toggleMenu(mostrar){
+            menuFlotante.classList.toggle('visible', mostrar);
+            btnMenu.classList.toggle('abierto', mostrar);
+        }
+
+        btnMenu.onclick = function(e){
+            e.stopPropagation();
+            toggleMenu(!menuFlotante.classList.contains('visible'));
+        }
+        document.addEventListener('click', function(e){
+            if (!menuFlotante.contains(e.target) && e.target !== btnMenu) {
+                toggleMenu(false);
+            }
+        });
+
+        // ===== BOTONES DE FLECHA (proveedores anteriores) =====
+        document.querySelectorAll('.btn-flecha').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const target = btn.dataset.target;
+                const filas = document.querySelectorAll('.grupo-' + target.split('-')[1]);
+                const abrir = !btn.classList.contains('abierta');
+
+                filas.forEach(function (fila) {
+                    fila.style.display = abrir ? 'table-row' : 'none';
+                });
+
+                btn.classList.toggle('abierta', abrir);
+                btn.innerHTML = abrir ? '&#9660;' : '&#9654;';
+            });
+        });
+
+        // ===== PAGINACIÓN Y BÚSQUEDA =====
+        (function() {
+            const table = document.querySelector('table');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr.fila-principal'));
+            const noDataRow = tbody.querySelector('tr:not(.fila-principal)'); // mensaje "No hay productos"
+            const searchInput = document.getElementById('searchInput');
+            const paginationWrap = document.getElementById('paginationWrap');
+            const paginationInfo = document.getElementById('paginationInfo');
+            const btnPrev = document.getElementById('btnPrevPage');
+            const btnNext = document.getElementById('btnNextPage');
+
+            const REG_POR_PAGINA = 20;
+            let paginaActual = 1;
+            let filasFiltradas = [];
+
+            function getSearchTerm(){
+                return searchInput.value.toLowerCase().trim();
+            }
+
+            function filtrarFilas(){
+                const term = getSearchTerm();
+                if (term === '') {
+                    filasFiltradas = rows.slice();
+                } else {
+                    filasFiltradas = rows.filter(row => {
+                        const searchData = row.dataset.search || '';
+                        return searchData.includes(term);
+                    });
+                }
+                // Si no hay filas filtradas y no hay filas en absoluto, mostrar mensaje de no datos
+                if (filasFiltradas.length === 0 && rows.length === 0) {
+                    if (noDataRow) noDataRow.style.display = '';
+                } else {
+                    if (noDataRow) noDataRow.style.display = 'none';
+                }
+                paginaActual = 1;
+                renderPagina();
+            }
+
+            function renderPagina(){
+                const total = filasFiltradas.length;
+                const totalPaginas = Math.max(1, Math.ceil(total / REG_POR_PAGINA));
+                if (paginaActual > totalPaginas) paginaActual = totalPaginas;
+                if (paginaActual < 1) paginaActual = 1;
+
+                const inicio = (paginaActual - 1) * REG_POR_PAGINA;
+                const fin = Math.min(inicio + REG_POR_PAGINA, total);
+
+                // Ocultar todas las filas principales y extra
+                rows.forEach(row => row.style.display = 'none');
+                // Ocultar todas las filas extra (las que no son principales)
+                tbody.querySelectorAll('tr.fila-proveedor-extra').forEach(tr => tr.style.display = 'none');
+
+                // Mostrar las filas del rango actual
+                for (let i = inicio; i < fin; i++) {
+                    filasFiltradas[i].style.display = '';
+                }
+
+                // Actualizar paginación
+                if (total > REG_POR_PAGINA) {
+                    paginationWrap.style.display = 'flex';
+                    paginationInfo.textContent = `Página ${paginaActual} de ${totalPaginas}`;
+                    btnPrev.disabled = paginaActual <= 1;
+                    btnNext.disabled = paginaActual >= totalPaginas;
+                } else {
+                    paginationWrap.style.display = 'none';
+                }
+
+                // Recrear los íconos de lucide (por si hay cambios)
+                lucide.createIcons();
+            }
+
+            // Eventos de paginación
+            btnPrev.addEventListener('click', function(){
+                if (paginaActual > 1) {
+                    paginaActual--;
+                    renderPagina();
+                }
+            });
+            btnNext.addEventListener('click', function(){
+                const totalPaginas = Math.ceil(filasFiltradas.length / REG_POR_PAGINA);
+                if (paginaActual < totalPaginas) {
+                    paginaActual++;
+                    renderPagina();
+                }
+            });
+
+            // Evento de búsqueda
+            searchInput.addEventListener('input', filtrarFilas);
+
+            // Inicializar
+            filtrarFilas();
+
+            // Al hacer clic en botones de flecha, no afecta la paginación
+            // pero debemos asegurarnos de que las filas extra se muestren correctamente
+            // El evento de clic ya está definido arriba.
+        })();
+    </script>
+</body>
+</html>
