@@ -12,7 +12,6 @@ from django.core.cache import cache
 from .utils_cache import CACHE_KEY_BAJO_DURACION, CACHE_TIMEOUT
 from openpyxl import load_workbook
 from django.db import transaction
-from .graph_correo import *
 from datetime import datetime, date
 #========================================================
 # UTILIDADES PARA PROCESAR LOS ARCHIVOS DE EXCEL DEL INFORME
