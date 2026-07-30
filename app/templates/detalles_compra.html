@@ -605,10 +605,63 @@
             ocultarOverlay(overlayError);
         });
 
-        // Mostrar loading al enviar el formulario de compras
-        document.getElementById('formCompras').addEventListener('submit', function(){
+        // ──────────────────────────────────────────────
+        // ENVÍO ASÍNCRONO DEL FORMULARIO (AJAX con fetch)
+        // ──────────────────────────────────────────────
+        const formCompras = document.getElementById('formCompras');
+        formCompras.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const formData = new FormData(this);
+
+            // Cerrar modal y mostrar overlay de carga
             modalCompras.classList.remove('mostrar');
             mostrarOverlay(overlayCarga);
+
+            try {
+                const response = await fetch(this.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                const data = await response.json();
+
+                // Ocultar carga
+                ocultarOverlay(overlayCarga);
+
+                if (data.status === 'success') {
+                    // Éxito: mostrar mensaje y recargar al cerrar
+                    document.getElementById('exitoMensaje').textContent =
+                        data.message || 'Las compras se han cargado correctamente.';
+                    mostrarOverlay(overlayExito);
+                } else {
+                    // Error controlado (devuelto por la vista)
+                    document.getElementById('errorTitulo').textContent =
+                        data.title || 'Error al procesar';
+                    document.getElementById('errorMensaje').textContent =
+                        data.message || 'Ocurrió un error inesperado.';
+
+                    const errorLista = document.getElementById('errorLista');
+                    if (data.errors && data.errors.length) {
+                        errorLista.style.display = 'block';
+                        errorLista.innerHTML = data.errors.map(e => `<li>${e}</li>`).join('');
+                    } else {
+                        errorLista.style.display = 'none';
+                    }
+                    mostrarOverlay(overlayError);
+                }
+            } catch (error) {
+                // Error de red o parseo
+                ocultarOverlay(overlayCarga);
+                document.getElementById('errorTitulo').textContent = 'Error de conexión';
+                document.getElementById('errorMensaje').textContent =
+                    'No se pudo conectar con el servidor. Inténtalo de nuevo.';
+                document.getElementById('errorLista').style.display = 'none';
+                mostrarOverlay(overlayError);
+            }
         });
 
         // Convertir campo file del formulario de compras en dropzone

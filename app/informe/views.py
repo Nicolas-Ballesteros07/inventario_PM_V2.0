@@ -20,8 +20,8 @@ import json
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
 from django.db.models import Case, When, Value, IntegerField
-
-
+import logging
+logger = logging.getLogger(__name__)
 #======================================
 # VER EL INFORME (con caché)
 #======================================
@@ -530,56 +530,85 @@ def reactivar_producto_view(request, exclusion_id):
     return redirect('productos_excluidos')
 
 
-#=======================================
-# VIEWS PARA DETALLES DE COMPRA (con caché)
-#=======================================
-def compras_lista(request):
-    compras = cache.get(CACHE_KEY_COMPRAS)
 
+
+
+# =======================================
+# VIEW: LISTA DE COMPRAS (lectura con caché)
+# =======================================
+def compras_lista(request):
+    """
+    El caché aquí SOLO evita repetir la consulta a la BD en cada
+    carga de página. Nunca se usa para decidir si algo se guardó:
+    eso siempre pasa directo contra la base de datos en cargar_compras()
+    (bulk_create / bulk_update dentro de procesar_archivo_compras).
+ 
+    Igual que en las vistas de exclusión, la lectura del caché se
+    protege con try/except: si el backend de caché falla por lo que
+    sea, la vista sigue funcionando yendo directo a la BD en vez de
+    romperse.
+    """
+    try:
+        compras = cache.get(CACHE_KEY_COMPRAS)
+    except Exception:
+        logger.exception("Fallo al leer caché de compras; se consulta la BD directamente.")
+        compras = None
+ 
     if compras is None:
         compras = list(
             Compra.objects.select_related('producto').order_by('-fecha_compra')
         )
-        cache.set(CACHE_KEY_COMPRAS, compras, CACHE_TIMEOUT)
-
+        try:
+            cache.set(CACHE_KEY_COMPRAS, compras, CACHE_TIMEOUT)
+        except Exception:
+            logger.exception("Fallo al guardar caché de compras; los datos igual se muestran desde la BD.")
+ 
     return render(request, 'detalles_compra.html', {
         'compras': compras,
         'form': CargarComprasForm(),
     })
-
-
+ 
+ 
+# =======================================
+# VIEW: CARGA DE EXCEL DE COMPRAS (escritura directa a la BD)
+# =======================================
 def cargar_compras(request):
-    if request.method == 'POST':
-        form = CargarComprasForm(request.POST, request.FILES)
-        if form.is_valid():
-            try:
-                creados, actualizados, productos_creados = procesar_archivo_compras(
-                    request.FILES['archivo_excel']
-                )
-                if creados or actualizados:
-                    invalidar_cache_compra()
-                if creados:
-                    messages.success(
-                        request, f'{creados} compra(s) nueva(s) cargada(s).'
-                    )
-                if actualizados:
-                    messages.info(
-                        request, f'{actualizados} compra(s) ya existente(s) actualizada(s) (sin duplicar).'
-                    )
-                if productos_creados:
-                    invalidar_cache_producto()
-                    messages.info(
-                        request,
-                        f'{len(productos_creados)} producto(s) nuevo(s) creado(s) '
-                        f'automáticamente: {", ".join(productos_creados)}'
-                    )
-            except Exception as e:
-                messages.error(request, f'Error al procesar el archivo: {str(e)}')
-        else:
-            messages.error(request, 'Formulario inválido.')
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido.'}, status=405)
 
-    return redirect('compras_lista')
+    form = CargarComprasForm(request.POST, request.FILES)
+    if not form.is_valid():
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Formulario inválido: {form.errors.as_text()}'
+        }, status=400)
 
+    archivo = request.FILES['archivo_excel']
+    logger.info(f"Archivo de compras recibido: {archivo.name} ({archivo.size} bytes)")
+
+    try:
+        creados, actualizados, productos_creados = procesar_archivo_compras(archivo)
+
+        if creados or actualizados:
+            invalidar_cache_compra()
+        if productos_creados:
+            invalidar_cache_producto()
+
+        partes = []
+        if creados:
+            partes.append(f'{creados} compra(s) nueva(s) cargada(s).')
+        if actualizados:
+            partes.append(f'{actualizados} compra(s) actualizada(s).')
+        if productos_creados:
+            partes.append(f'{len(productos_creados)} producto(s) nuevo(s) creado(s).')
+        if not creados and not actualizados:
+            partes.append('No se encontraron filas válidas para cargar (revisa la columna D desde la fila 6).')
+
+        return JsonResponse({'status': 'success', 'message': ' '.join(partes)})
+
+    except Exception as e:
+        logger.exception("Fallo al procesar archivo de compras")
+        return JsonResponse({'status': 'error', 'message': f'Error al procesar el archivo: {str(e)}'}, status=500)
 
 
 #=======================================

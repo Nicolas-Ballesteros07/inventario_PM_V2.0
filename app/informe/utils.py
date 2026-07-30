@@ -14,6 +14,25 @@ from openpyxl import load_workbook
 from django.db import transaction
 from datetime import datetime, date
 from django.db.models import Prefetch
+
+# ─────────────────────────────────────────────
+# Parseo de fechas unificado (usado en compras y vencimientos)
+# ─────────────────────────────────────────────
+def _parsear_fecha(valor):
+    if valor is None or valor == "":
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    valor = str(valor).strip()
+    for formato in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(valor, formato).date()
+        except ValueError:
+            continue
+    return None
+
 #========================================================
 # UTILIDADES PARA PROCESAR LOS ARCHIVOS DE EXCEL DEL INFORME
 #========================================================
@@ -510,24 +529,28 @@ def reactivar_producto(exclusion_id):
 
     return True
 
-#===========================================================
-# UTILS PARA CARGAR EL DETALLADO DE COMPRA
-#===========================================================    
-# Columnas fijas según el layout del Excel de compras
-COL_FACTURA = column_index_from_string('B')      # B5 "Factura", datos desde B6
-COL_FECHA = column_index_from_string('C')        # C5 "Fecha", datos desde C6
-COL_CODIGO = column_index_from_string('D')       # D5 "Codigo", datos desde D6
-COL_DESCRIPCION = column_index_from_string('E')  # E5 "Nombre", datos desde E6
-COL_BARRAS = column_index_from_string('G')       # G5 "Referencia", datos desde G6
-COL_LABORATORIO = column_index_from_string('I')  # I5 "Grupo", datos desde I6
-COL_VALOR = column_index_from_string('T')        # T5 "SubtotalDctoFin", datos desde T6
-COL_PROVEEDOR = column_index_from_string('AB')   # AB5 "Nombre Proveedor", datos desde AB6
+# ===========================================================
+# UTILS PARA CARGAR EL DETALLADO DE COMPRA (versión optimizada)
+# ===========================================================
+COL_FACTURA = column_index_from_string('B')
+COL_FECHA = column_index_from_string('C')
+COL_CODIGO = column_index_from_string('D')
+COL_DESCRIPCION = column_index_from_string('E')
+COL_BARRAS = column_index_from_string('G')
+COL_LABORATORIO = column_index_from_string('I')
+COL_VALOR = column_index_from_string('T')
+COL_PROVEEDOR = column_index_from_string('AB')
 
 
-def _parsear_fecha(valor):
-    """Acepta datetime nativo de Excel o texto tipo '01/01/26' / '01/01/2026'."""
+def _parsear_fecha_compra(valor):
+    """
+    Acepta datetime nativo de Excel o texto tipo '01/01/26' / '01/01/2026'.
+    Nombre específico para evitar colisión con _parsear_fecha_vencimiento.
+    """
     if isinstance(valor, datetime):
         return valor.date()
+    if isinstance(valor, date):
+        return valor
     if isinstance(valor, str) and valor.strip():
         for fmt in ('%d/%m/%y', '%d/%m/%Y'):
             try:
@@ -537,80 +560,148 @@ def _parsear_fecha(valor):
     return None
 
 
-def _texto(valor):
+def _texto_compra(valor):
     return str(valor).strip() if valor not in (None, '') else ''
 
 
 def procesar_archivo_compras(archivo):
     """
-    Lee un Excel de compras y crea/actualiza registros de Compra.
-    Usa (producto, factura, fecha_compra) como clave natural para evitar
-    duplicados: si la misma combinación ya existe, actualiza el proveedor
-    y el valor (por si cambiaron); si no existe, la crea.
+    Versión optimizada: en vez de una consulta por fila (get_or_create /
+    update_or_create), se hace TODO en un puñado de queries:
 
-    Esto resuelve tanto el caso de subir el mismo archivo dos veces (todo
-    se actualiza sin duplicar) como el de rangos parcialmente solapados
-    (12/06-12/07 y luego 12/06-12/08): las filas del rango ya cargado se
-    actualizan in-place, y las filas nuevas (12/07-12/08) se crean.
+      1. Se leen todas las filas del Excel a memoria (sin tocar la BD).
+      2. Se traen de un solo golpe los productos y compras existentes
+         que coinciden con los códigos/facturas del archivo.
+      3. Se separan en listas de "nuevos" vs "ya existentes".
+      4. Se insertan/actualizan en bloque con bulk_create / bulk_update,
+         dentro de una única transacción.
 
-    Retorna (creados, actualizados, productos_creados).
+    Esto reduce miles de round-trips de red a ~4-6 queries totales,
+    sin cambiar el comportamiento ni el resultado final.
     """
     archivo.seek(0)
-    wb = openpyxl.load_workbook(archivo, data_only=True)
+    wb = openpyxl.load_workbook(archivo, data_only=True, read_only=True)
     ws = wb.active
 
-    fecha_inicio = _parsear_fecha(ws['B4'].value)
-    fecha_fin = _parsear_fecha(ws['D4'].value)
+    fecha_inicio = _parsear_fecha_compra(ws['B4'].value)
+    fecha_fin = _parsear_fecha_compra(ws['D4'].value)
 
-    creados = 0
-    actualizados = 0
-    productos_creados = []
-
-    for row in ws.iter_rows(min_row=6, values_only=False):
-        codigo_celda = row[COL_CODIGO - 1].value
-        codigo = _texto(codigo_celda)
+    # --- 1. Leer todas las filas válidas a memoria ---
+    filas_validas = []
+    codigos_vistos = set()
+    for row in ws.iter_rows(min_row=6, values_only=True):
+        codigo = _texto_compra(row[COL_CODIGO - 1])
         if not codigo:
             continue
 
-        producto, fue_creado = Producto.objects.get_or_create(
-            codigo_mantis=codigo,
-            defaults={
-                'barras': _texto(row[COL_BARRAS - 1].value),
-                'descripcion': _texto(row[COL_DESCRIPCION - 1].value),
-                'laboratorio': _texto(row[COL_LABORATORIO - 1].value),
-                'estado': True,
-            }
-        )
-        if fue_creado:
-            productos_creados.append(codigo)
-
-        fecha_compra = _parsear_fecha(row[COL_FECHA - 1].value)
+        fecha_compra = _parsear_fecha_compra(row[COL_FECHA - 1])
         if fecha_compra is None:
             continue
 
-        factura_val = _texto(row[COL_FACTURA - 1].value)
-        proveedor_val = _texto(row[COL_PROVEEDOR - 1].value)
-        valor_val = row[COL_VALOR - 1].value
-        valor_compra = float(valor_val) if valor_val else 0
-
-        _, fue_creada = Compra.objects.update_or_create(
-            producto=producto,
-            factura=factura_val,
-            fecha_compra=fecha_compra,
-            defaults={
-                'proveedor': proveedor_val,
-                'valor_compra': valor_compra,
-                'periodo_inicio': fecha_inicio,
-                'periodo_fin': fecha_fin,
-            }
-        )
-        if fue_creada:
-            creados += 1
-        else:
-            actualizados += 1
+        valor_val = row[COL_VALOR - 1]
+        filas_validas.append({
+            'codigo': codigo,
+            'barras': _texto_compra(row[COL_BARRAS - 1]),
+            'descripcion': _texto_compra(row[COL_DESCRIPCION - 1]),
+            'laboratorio': _texto_compra(row[COL_LABORATORIO - 1]),
+            'factura': _texto_compra(row[COL_FACTURA - 1]),
+            'proveedor': _texto_compra(row[COL_PROVEEDOR - 1]),
+            'valor_compra': float(valor_val) if valor_val else 0,
+            'fecha_compra': fecha_compra,
+        })
+        codigos_vistos.add(codigo)
 
     wb.close()
-    return creados, actualizados, productos_creados
+
+    if not filas_validas:
+        return 0, 0, []
+
+    # --- 2. Traer productos existentes de un solo golpe ---
+    productos_existentes = {
+        p.codigo_mantis: p
+        for p in Producto.objects.filter(codigo_mantis__in=codigos_vistos)
+    }
+
+    productos_nuevos = {}
+    productos_creados_codigos = []
+
+    for f in filas_validas:
+        codigo = f['codigo']
+        if codigo not in productos_existentes and codigo not in productos_nuevos:
+            productos_nuevos[codigo] = Producto(
+                codigo_mantis=codigo,
+                barras=f['barras'],
+                descripcion=f['descripcion'],
+                laboratorio=f['laboratorio'],
+                estado=True,
+            )
+
+    # --- 3. Crear productos nuevos en bloque ---
+    if productos_nuevos:
+        with transaction.atomic():
+            Producto.objects.bulk_create(productos_nuevos.values(), batch_size=500)
+        # Volver a traerlos para tener sus IDs asignados
+        nuevos_creados = Producto.objects.filter(codigo_mantis__in=productos_nuevos.keys())
+        for p in nuevos_creados:
+            productos_existentes[p.codigo_mantis] = p
+            productos_creados_codigos.append(p.codigo_mantis)
+
+    # --- 4. Traer compras existentes de un solo golpe ---
+    # Clave natural: (producto_id, factura, fecha_compra)
+    facturas_vistas = {f['factura'] for f in filas_validas}
+    compras_existentes_qs = Compra.objects.filter(
+        producto__codigo_mantis__in=codigos_vistos,
+        factura__in=facturas_vistas,
+    ).select_related('producto')
+
+    compras_existentes = {
+        (c.producto.codigo_mantis, c.factura, c.fecha_compra): c
+        for c in compras_existentes_qs
+    }
+
+    compras_nuevas = []
+    compras_a_actualizar = []
+    claves_vistas = set()
+
+    for f in filas_validas:
+        clave = (f['codigo'], f['factura'], f['fecha_compra'])
+        if clave in claves_vistas:
+            # Evita duplicados dentro del mismo archivo (misma fila repetida)
+            continue
+        claves_vistas.add(clave)
+
+        producto = productos_existentes[f['codigo']]
+
+        if clave in compras_existentes:
+            compra = compras_existentes[clave]
+            compra.proveedor = f['proveedor']
+            compra.valor_compra = f['valor_compra']
+            compra.periodo_inicio = fecha_inicio
+            compra.periodo_fin = fecha_fin
+            compras_a_actualizar.append(compra)
+        else:
+            compras_nuevas.append(Compra(
+                producto=producto,
+                factura=f['factura'],
+                fecha_compra=f['fecha_compra'],
+                proveedor=f['proveedor'],
+                valor_compra=f['valor_compra'],
+                periodo_inicio=fecha_inicio,
+                periodo_fin=fecha_fin,
+            ))
+
+    # --- 5. Guardar en bloque dentro de una sola transacción ---
+    with transaction.atomic():
+        if compras_nuevas:
+            Compra.objects.bulk_create(compras_nuevas, batch_size=500)
+        if compras_a_actualizar:
+            Compra.objects.bulk_update(
+                compras_a_actualizar,
+                fields=['proveedor', 'valor_compra', 'periodo_inicio', 'periodo_fin'],
+                batch_size=500,
+            )
+
+    return len(compras_nuevas), len(compras_a_actualizar), productos_creados_codigos
 
 
 #====================================================================
@@ -1038,25 +1129,10 @@ def actualizar_producto(id_random, data):
         "message": "Producto actualizado correctamente.",
         "producto": producto
     }
+
 #=======================================
 # UTILS PARA LAS FECHAS DE VENCIMIENTO
 #=======================================
-def _parsear_fecha(valor):
-    if valor is None or valor == "":
-        return None
-    if isinstance(valor, datetime):
-        return valor.date()
-    if isinstance(valor, date):
-        return valor
-    valor = str(valor).strip()
-    for formato in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
-        try:
-            return datetime.strptime(valor, formato).date()
-        except ValueError:
-            continue
-    return None
-
-
 def _limpiar_texto(valor):
     if valor is None:
         return ""

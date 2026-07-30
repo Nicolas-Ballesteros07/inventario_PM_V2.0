@@ -1,4 +1,7 @@
+import logging
 from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
 
 CACHE_TIMEOUT = 60 * 60 * 6  # 6 horas (respaldo; se invalida manualmente al escribir)
 
@@ -27,16 +30,32 @@ CLAVES_DEPENDIENTES_DE_COMPRA = [
 ]
 
 
+def _invalidar_claves(claves, origen):
+    """
+    El caché es SOLO un acelerador de lecturas repetidas; nunca debe
+    condicionar si los datos se guardaron o no en la base de datos.
+    Si falla la invalidación (ej. tabla de caché caída), se registra
+    el error pero el flujo de la vista continúa con normalidad —
+    la página simplemente seguirá sirviendo datos cacheados hasta el
+    próximo TTL, en vez de romper el guardado.
+    """
+    try:
+        cache.delete_many(claves)
+    except Exception:
+        logger.exception(f"No se pudo invalidar el caché ({origen}); "
+                          f"los datos ya se guardaron correctamente en la BD.")
+
+
 def invalidar_cache_carga():
     """Después de subir un nuevo informe (subir_archivos)."""
-    cache.delete_many(CLAVES_DEPENDIENTES_DE_CARGA)
+    _invalidar_claves(CLAVES_DEPENDIENTES_DE_CARGA, origen="carga de informe")
 
 
 def invalidar_cache_producto():
     """Después de excluir/reactivar/crear productos."""
-    cache.delete_many(CLAVES_DEPENDIENTES_DE_PRODUCTO)
+    _invalidar_claves(CLAVES_DEPENDIENTES_DE_PRODUCTO, origen="cambio de producto")
 
 
 def invalidar_cache_compra():
     """Después de cargar_compras."""
-    cache.delete_many(CLAVES_DEPENDIENTES_DE_COMPRA)
+    _invalidar_claves(CLAVES_DEPENDIENTES_DE_COMPRA, origen="carga de compras")
