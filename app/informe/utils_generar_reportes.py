@@ -369,7 +369,6 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
     dv = DataValidation(type="list", formula1='"Sí,No"', allow_blank=True)
     ws1.add_data_validation(dv)
 
-    # después
     for d in datos:
         row = [
             d['codigo'], d['nombre'], d['duracion'], d['solicitar'],
@@ -378,9 +377,9 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
             "No",
         ]
         ws1.append(row)
-        dv.add(ws1.cell(row=ws1.max_row, column=10))
+        dv.add(ws1.cell(row=ws1.max_row, column=9))  # columna I (9) porque son 9 columnas (A-I)
 
-    ws1.auto_filter.ref = f"A1:J{ws1.max_row}"
+    ws1.auto_filter.ref = f"A1:I{ws1.max_row}"  # rango hasta columna I
 
     for col in ws1.columns:
         max_length = 0
@@ -494,5 +493,52 @@ def generar_reporte_vencimientos(fecha_inicio, fecha_fin):
     for columna in ws.columns:
         longitud = max(len(str(celda.value or "")) for celda in columna)
         ws.column_dimensions[columna[0].column_letter].width = longitud + 5
+
+    return wb
+
+#========================================
+# UTILS PARA GENERAR REPORTE DE CATEGORIZACION
+#===========================================
+def generar_reporte_categorizaciones():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Categorizaciones"
+
+    encabezados = [
+        "Código Mantis",
+        "Descripción",
+        "Categoría",
+        "Análisis",
+        "Fecha Registro",
+    ]
+
+    for col, encabezado in enumerate(encabezados, start=1):
+        celda = ws.cell(row=1, column=col)
+        celda.value = encabezado
+        celda.font = Font(bold=True)
+
+    categorizaciones = (
+        Categorizacion.objects
+        .select_related("producto")
+        .order_by("-fecha_registro")
+    )
+
+    fila = 2
+
+    for categoria in categorizaciones:
+        ws.cell(fila, 1).value = categoria.producto.codigo_mantis
+        ws.cell(fila, 2).value = categoria.producto.descripcion
+        ws.cell(fila, 3).value = categoria.get_tipo_categoria_display()
+        ws.cell(fila, 4).value = categoria.analisis or ""
+        ws.cell(fila, 5).value = categoria.fecha_registro.strftime("%d/%m/%Y %H:%M")
+        fila += 1
+
+    # Ajustar ancho de columnas
+    for columna in ws.columns:
+        ancho = max(len(str(celda.value or "")) for celda in columna)
+        ws.column_dimensions[columna[0].column_letter].width = ancho + 5
+
+    # Activar filtros
+    ws.auto_filter.ref = f"A1:E{fila-1}"
 
     return wb

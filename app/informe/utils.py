@@ -1036,20 +1036,27 @@ def obtener_comparativa_general(carga_actual, productos_excluidos_ids):
             c for c in comparativas
             if c['ind_duracion_actual'] in ('SIN ROTACIÓN', 'BAJO STOCK')
         ]
+
+        # Una sola query para TODOS los candidatos, en vez de una por producto
+        producto_ids_candidatos = [c['detalle'].producto_id for c in candidatos_baja]
+        compras_recientes_qs = (
+            Compra.objects
+            .filter(
+                producto_id__in=producto_ids_candidatos,
+                fecha_compra__range=[periodo_inicio, periodo_fin],
+            )
+            .order_by('producto_id', '-fecha_compra')
+        )
+        # Como viene ordenado por producto_id y fecha desc, la primera
+        # aparición de cada producto_id ya es su compra más reciente.
+        ultima_compra_por_producto = {}
+        for compra in compras_recientes_qs:
+            if compra.producto_id not in ultima_compra_por_producto:
+                ultima_compra_por_producto[compra.producto_id] = compra
+
         for c in candidatos_baja:
             d = c['detalle']
-
-            # Trae la compra MÁS RECIENTE dentro del período, para poder
-            # comparar su fecha contra el cierre del período analizado.
-            ultima_compra = (
-                Compra.objects
-                .filter(
-                    producto=d.producto,
-                    fecha_compra__range=[periodo_inicio, periodo_fin],
-                )
-                .order_by('-fecha_compra')
-                .first()
-            )
+            ultima_compra = ultima_compra_por_producto.get(d.producto_id)
 
             if not ultima_compra:
                 continue

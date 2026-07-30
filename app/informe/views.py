@@ -769,6 +769,22 @@ def cargar_excel_categorizacion(request):
 
     return redirect("categorizacion")
 
+# VIEW PARA DESCARGAR REPORTE DE CATEGORIZACION EN EXCEL
+def descargar_reporte_categorizaciones(request):
+    workbook = generar_reporte_categorizaciones()
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    response["Content-Disposition"] = (
+        'attachment; filename="reporte_categorizaciones.xlsx"'
+    )
+
+    workbook.save(response)
+
+    return response
+
 # VIEW PARA CARGAR FECHAS DE VENCIMIENTO
 #====================================================
 # VIEW: LISTA DE VENCIMIENTOS

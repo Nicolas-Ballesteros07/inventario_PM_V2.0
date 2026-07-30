@@ -375,6 +375,16 @@
         .alerta-btn-secundario{ background: var(--gris-claro); color: var(--azul-oscuro); }
         .alerta-btn-secundario:hover{ background:#e2e6e9; }
 
+        .btn-accion{
+            display:flex; align-items:center; gap:8px; background: var(--azul-medio); color:var(--blanco);
+            border:none; padding:12px 22px; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer;
+            box-shadow: 0 4px 12px rgba(16,87,136,0.25);
+            transition: background .18s ease, transform .15s ease, box-shadow .18s ease, opacity .18s ease;
+        }
+        .btn-accion svg{ width:16px; height:16px; display:block; flex-shrink:0; }
+        .btn-accion:hover{ background: var(--azul-oscuro); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16,87,136,0.35); }
+        .btn-accion:disabled{ opacity:.5; cursor:not-allowed; transform:none; box-shadow:none; }
+
         ::-webkit-scrollbar{ width:10px; height:10px; }
         ::-webkit-scrollbar-thumb{ background: var(--azul-medio); border-radius:10px; }
 

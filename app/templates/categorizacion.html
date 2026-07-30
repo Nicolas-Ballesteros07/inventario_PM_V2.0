@@ -450,6 +450,10 @@
             <span class="accion-label">Categorizar Producto</span>
             <button id="btnAbrirCategorizacion"><i data-lucide="tags"></i></button>
         </div>
+        <div class="accion-item">
+            <span class="accion-label">Descargar Reporte</span>
+            <button id="btnDescargarCategorizaciones" type="button"><i data-lucide="file-spreadsheet"></i></button>
+        </div>
     </div>
 
     <!-- Modal único: Categorización con vistas (selección, manual, excel) -->
@@ -880,6 +884,50 @@
                 ocultarOverlay(overlayCarga);
                 mostrarError('Error de conexión', 'No se pudo contactar al servidor.', [], 'error');
             });
+        });
+
+        // === DESCARGA DE REPORTE DE CATEGORIZACIONES CON BLOQUEO ANTI-SPAM ===
+        const btnDescargarCategorizaciones = document.getElementById('btnDescargarCategorizaciones');
+        let descargandoCategorizaciones = false;
+
+        btnDescargarCategorizaciones.addEventListener('click', function(){
+            if (descargandoCategorizaciones) return;
+
+            descargandoCategorizaciones = true;
+            btnDescargarCategorizaciones.disabled = true;
+            btnDescargarCategorizaciones.style.opacity = '0.5';
+            btnDescargarCategorizaciones.style.cursor = 'not-allowed';
+            abrirMenu(false);
+            mostrarOverlay(overlayCarga);
+
+            fetch("{% url 'descargar_reporte_categorizaciones' %}")
+                .then(function(response){
+                    if (!response.ok) throw new Error('Error al generar el reporte');
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    const filename = match ? match[1] : 'reporte_categorizaciones.xlsx';
+                    return response.blob().then(blob => ({ blob, filename }));
+                })
+                .then(function({ blob, filename }){
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(function(){
+                    mostrarError('Error', 'No se pudo generar el reporte. Intenta nuevamente.', [], 'error');
+                })
+                .finally(function(){
+                    descargandoCategorizaciones = false;
+                    btnDescargarCategorizaciones.disabled = false;
+                    btnDescargarCategorizaciones.style.opacity = '';
+                    btnDescargarCategorizaciones.style.cursor = '';
+                    ocultarOverlay(overlayCarga);
+                });
         });
 
         // Paginación y búsqueda + filtro por categoría

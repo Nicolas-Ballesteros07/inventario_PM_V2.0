@@ -41,6 +41,9 @@ urlpatterns = [
 
     # url para cargar el archivo de categorizacion
     path("categorizacion/cargar/",views.cargar_excel_categorizacion,name="cargar_excel_categorizacion"),
+    
+    # URL PARA DESCARGAR EL REPORTE DE PRODUCTOS CATEGORIZADOS
+    path("categorizaciones/reporte/",views.descargar_reporte_categorizaciones,name="descargar_reporte_categorizaciones",),
 
     # url para descargar el informe de productos con bajo stock
     path('reporte-excel/', views.descargar_reporte_bajo_stock, name='reporte_excel_productos'),
