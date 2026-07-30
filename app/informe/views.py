@@ -621,12 +621,16 @@ def productos_bajo_duracion(request):
     # ENDPOINT JSON PARA POWER AUTOMATE — ?api=true envio de alerta
     # ══════════════════════════════════════════════════════════════════
     if request.GET.get("api") == "true":
-        fecha_referencia, dia_de_corte, alertas = construir_alertas_baja_duracion(umbral=1.0, solo_categoria_a=True)
+        url_app = request.build_absolute_uri(reverse('productos_bajo_duracion'))
+        fecha_referencia, dia_de_corte, alertas, url_app = construir_alertas_baja_duracion(
+            umbral=1.0, solo_categoria_a=True, url_app=url_app
+        )
         resp = JsonResponse({
             "fecha_referencia": fecha_referencia,
             "dia_de_corte":     dia_de_corte,
             "total_alertas":    len(alertas),
             "alertas":          alertas,
+            "url_aplicacion":   url_app,
         })
         resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         resp["Pragma"]        = "no-cache"
@@ -666,6 +670,7 @@ def productos_bajo_duracion(request):
         'productos': productos,
     })
 
+
 # para generar y descargar un reporte Excel de productos con baja duración
 @require_GET
 def descargar_reporte_bajo_stock(request):
@@ -683,7 +688,8 @@ def descargar_reporte_bajo_stock(request):
             item['categorizacion'] = mapa_cat.get(item['detalle'].producto_id)
 
     return generar_excel_reporte(productos, titulo="Productos con baja duración")
-#====================================================
+
+
 # VIEW PARA LA CARGA DE CATEGORIA DE PRODUCTOS 
 #====================================================
 

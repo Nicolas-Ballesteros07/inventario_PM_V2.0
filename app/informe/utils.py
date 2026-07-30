@@ -755,16 +755,28 @@ def obtener_productos_bajo_duracion(umbral=1.0):
 
 # utils para enviar la alerta
 
-#====================================================================
-# ARMAR ALERTAS DE PRODUCTOS CON BAJA DURACIÓN — SCHEMA PARA POWER AUTOMATE
-#====================================================================
-def construir_alertas_baja_duracion(umbral=1.0, solo_categoria_a=True):
+def construir_alertas_baja_duracion(umbral=1.0, solo_categoria_a=True, url_app=""):
+    """
+    Construye alertas para productos con duración menor al umbral.
+
+    Args:
+        umbral (float): duración mínima para considerar bajo stock.
+        solo_categoria_a (bool): si True, solo incluye productos categoría 'A'.
+        url_app (str): URL de la aplicación para incluir en el retorno.
+
+    Returns:
+        tuple: (fecha_referencia, dia_de_corte, alertas, url_app)
+    """
     productos = obtener_productos_bajo_duracion(umbral=umbral)
 
+    # Caso sin productos: retornamos inmediatamente con url_app
     if not productos:
         hoy = datetime.now()
-        return hoy.strftime("%d/%m/%Y"), hoy.day, []
+        fecha = hoy.strftime("%d/%m/%Y")
+        dia = hoy.day
+        return fecha, dia, [], url_app
 
+    # Obtener categorizaciones de los productos en una sola consulta
     ids = [item['detalle'].producto_id for item in productos]
     categorizaciones = Categorizacion.objects.filter(producto_id__in=ids)
     mapa_cat = {c.producto_id: c for c in categorizaciones}
@@ -775,7 +787,7 @@ def construir_alertas_baja_duracion(umbral=1.0, solo_categoria_a=True):
         compras = item.get('compras') or []
         cat = mapa_cat.get(detalle.producto_id)
 
-        # ── Filtrar: solo categoría A ──
+        # Filtro por categoría A
         if solo_categoria_a:
             if not cat or cat.tipo_categoria != 'A':
                 continue
@@ -786,7 +798,7 @@ def construir_alertas_baja_duracion(umbral=1.0, solo_categoria_a=True):
         solicitar = float(detalle.solicitar)
 
         if compras:
-            proveedor = compras[0].proveedor or ""
+            proveedor = compras[0].proveedor or "Sin proveedor"
             fecha_compra = compras[0].fecha_compra.strftime("%d/%m/%Y") if compras[0].fecha_compra else ""
         else:
             proveedor = "Sin proveedor"
@@ -812,6 +824,7 @@ def construir_alertas_baja_duracion(umbral=1.0, solo_categoria_a=True):
             "mensaje": mensaje,
         })
 
+    # Fecha de referencia basada en la última carga
     ultima_carga = CargaReporte.objects.order_by('-fecha_carga').first()
     if ultima_carga:
         fecha_referencia = ultima_carga.fecha_carga.strftime("%d/%m/%Y")
@@ -821,7 +834,7 @@ def construir_alertas_baja_duracion(umbral=1.0, solo_categoria_a=True):
         fecha_referencia = hoy.strftime("%d/%m/%Y")
         dia_de_corte = hoy.day
 
-    return fecha_referencia, dia_de_corte, alertas
+    return fecha_referencia, dia_de_corte, alertas, url_app
 
 #=======================================
 # utils para la categorizacion

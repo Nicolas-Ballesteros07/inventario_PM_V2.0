@@ -391,7 +391,8 @@
             <tbody>
             {% for item in productos %}
                 {% with detalle=item.detalle compras=item.compras %}
-                <tr class="fila-principal" data-search="{{ detalle.producto.codigo_mantis }} {{ detalle.producto.descripcion|lower }}">
+                <!-- después -->
+                <tr class="fila-principal" data-search="{{ detalle.producto.codigo_mantis|lower }} {{ detalle.producto.descripcion|lower }}">
                     <td>
                         {% if compras|length > 1 %}
                         <button class="btn-flecha" data-target="extra-{{ forloop.counter }}">&#9654;</button>
