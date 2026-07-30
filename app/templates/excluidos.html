@@ -520,6 +520,10 @@
             <span class="accion-label">Excluir Productos</span>
             <button id="btnExcluir"><i data-lucide="ban"></i></button>
         </div>
+        <div class="accion-item">
+            <span class="accion-label">Descargar Reporte Excel</span>
+            <a href="{% url 'descargar_reporte_productos_excluidos' %}"><i data-lucide="file-spreadsheet"></i></a>
+        </div>
     </div>
 
     <div id="modalExcluir" class="modal">

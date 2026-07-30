@@ -221,6 +221,25 @@
         .label-moderno{ display:block; font-size:13px; font-weight:800; color: var(--azul-oscuro); text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
         .hint-texto{ font-size:12.5px; color:#8a949c; margin:0 0 12px; }
 
+        /* --- Botones de método (selección) --- */
+        .opcion-metodo{
+            flex:1; display:flex; flex-direction:column; align-items:center; gap:10px;
+            padding:24px 16px; border:1.5px solid #d8dcdd; border-radius:14px; background:var(--blanco);
+            cursor:pointer; font-weight:700; font-size:14px; color: var(--azul-oscuro);
+            transition: border-color .18s ease, background .18s ease, transform .15s ease;
+        }
+        .opcion-metodo:hover{
+            border-color: var(--azul-medio); background: rgba(16,87,136,0.06); transform: translateY(-2px);
+        }
+        .opcion-metodo svg{ width:28px; height:28px; color: var(--azul-medio); }
+
+        .modal-content h2 .btn-volver{
+            background:none; border:none; cursor:pointer; padding:0; margin-right:6px;
+            display:inline-flex; align-items:center; color: var(--azul-medio); vertical-align:-3px;
+            transition: color .15s ease;
+        }
+        .modal-content h2 .btn-volver:hover{ color: var(--rojo); }
+
         /* --- Badges de categoría --- */
         .badge-categoria{
             display:inline-block; padding:4px 10px; border-radius:20px;
@@ -392,7 +411,7 @@
             <a href="{% url 'compras_lista' %}" class="nav-link"><i data-lucide="shopping-cart"></i> Cargar Compras</a>
             <a href="{% url 'productos_bajo_duracion' %}" class="nav-link"><i data-lucide="alert-triangle"></i> Productos a Comprar</a>
             <a href="{% url 'categorizacion' %}" class="nav-link activo"><i data-lucide="tags"></i> Categorización</a>
-            <a href="{% url 'lista_vencimientos' %}" class="nav-link "><i data-lucide="calendar-clock"></i> Vencimientos</a>
+            <a href="{% url 'lista_vencimientos' %}" class="nav-link"><i data-lucide="calendar-clock"></i> Vencimientos</a>
         </div>
         <div class="nav-version">version 2.0</div>
     </nav>
@@ -428,73 +447,92 @@
     </div>
     <div id="menuFlotante" class="menu-flotante">
         <div class="accion-item">
-            <span class="accion-label">Nueva Categorización</span>
-            <button id="btnNuevaCategorizacion"><i data-lucide="plus-circle"></i></button>
-        </div>
-        <div class="accion-item">
-            <span class="accion-label">Cargar Excel</span>
-            <button id="btnCargarExcelCat"><i data-lucide="file-spreadsheet"></i></button>
+            <span class="accion-label">Categorizar Producto</span>
+            <button id="btnAbrirCategorizacion"><i data-lucide="tags"></i></button>
         </div>
     </div>
 
-    <!-- Modal: Nueva Categorización -->
-    <div id="modalNuevaCategorizacion" class="modal">
+    <!-- Modal único: Categorización con vistas (selección, manual, excel) -->
+    <div id="modalCategorizacion" class="modal">
         <div class="modal-content">
-            <span class="close" id="cerrarModalNueva">&times;</span>
-            <h2><i data-lucide="pencil-line"></i> Registrar Categorización</h2>
-            <form method="post" id="formManualCategorizacion">
-                {% csrf_token %}
-                <div>
-                    <label for="cat_codigo" class="label-moderno">Código Mantis</label>
-                    <input type="text" name="codigo" id="cat_codigo" required placeholder="Ej: MANTIS001" style="width:100%; border:1.5px solid #d8dcdd; border-radius:10px; padding:11px 14px; font-family:inherit; font-size:15px;">
-                </div>
-                <div>
-                    <label for="cat_categoria" class="label-moderno">Categoría</label>
-                    <select name="categoria" id="cat_categoria" required style="width:100%; border:1.5px solid #d8dcdd; border-radius:10px; padding:11px 14px; font-family:inherit; font-size:15px;">
-                        <option value="">Seleccione</option>
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="C">C</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="cat_analisis" class="label-moderno">Análisis</label>
-                    <textarea name="analisis" id="cat_analisis" rows="5" style="width:100%; border:1.5px solid #d8dcdd; border-radius:10px; padding:11px 14px; font-family:inherit; font-size:15px; resize:vertical;"></textarea>
-                </div>
-                <button type="submit" class="btn-accion" style="align-self:flex-start; display:inline-flex; align-items:center; gap:8px; border:none; padding:12px 22px; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; background: var(--azul-medio); color:var(--blanco); box-shadow: 0 4px 12px rgba(16,87,136,0.25); transition: background .18s ease, transform .15s ease, box-shadow .18s ease, opacity .18s ease;">
-                    <i data-lucide="check"></i> Guardar
-                </button>
-            </form>
-        </div>
-    </div>
+            <span class="close" id="cerrarModalCategorizacion">&times;</span>
 
-    <!-- Modal: Cargar Excel -->
-    <div id="modalCargarExcelCat" class="modal">
-        <div class="modal-content">
-            <span class="close" id="cerrarModalExcelCat">&times;</span>
-            <h2><i data-lucide="file-spreadsheet"></i> Cargar Excel de Categorización</h2>
-            <label class="label-moderno">Subir archivo Excel</label>
-            <p class="hint-texto">El archivo debe tener el formato de categorización esperado (.xlsx).</p>
-            <form method="post" action="{% url 'cargar_excel_categorizacion' %}" enctype="multipart/form-data" id="formExcelCategorizacion">
-                {% csrf_token %}
-                <div class="dropzone" id="dropzoneCat">
-                    <input type="file" name="archivo" id="inputArchivoExcelCat" accept=".xlsx" class="campo-file-oculto">
-                    <div class="dropzone-contenido" id="dropzoneContenidoCat">
-                        <i data-lucide="upload-cloud" class="dropzone-icono"></i>
-                        <span class="dropzone-titulo">Arrastra tu archivo aquí</span>
-                        <span class="dropzone-sub">o haz clic para seleccionarlo</span>
-                        <span class="dropzone-formatos">.xlsx</span>
-                    </div>
-                    <div class="dropzone-archivo" id="dropzoneArchivoCat" style="display:none;">
-                        <i data-lucide="file-text" class="archivo-icono"></i>
-                        <span class="archivo-nombre" id="archivoNombreCat"></span>
-                        <button type="button" class="archivo-quitar" id="archivoQuitarCat"><i data-lucide="x"></i></button>
-                    </div>
+            <!-- Vista 1: Selección -->
+            <div id="vistaSeleccion">
+                <h2><i data-lucide="tags"></i> Categorizar Producto</h2>
+                <p class="hint-texto">Elige cómo quieres registrar la categorización.</p>
+                <div style="display:flex; gap:14px; margin-top:6px;">
+                    <button type="button" class="opcion-metodo" data-vista="vistaManual">
+                        <i data-lucide="pencil-line"></i>
+                        <span>Manual</span>
+                    </button>
+                    <button type="button" class="opcion-metodo" data-vista="vistaExcel">
+                        <i data-lucide="file-spreadsheet"></i>
+                        <span>Excel</span>
+                    </button>
                 </div>
-                <button type="submit" class="btn-accion" id="btnSubirExcelCat" disabled style="align-self:flex-start; display:inline-flex; align-items:center; gap:8px; border:none; padding:12px 22px; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; background: var(--azul-medio); color:var(--blanco); box-shadow: 0 4px 12px rgba(16,87,136,0.25); transition: background .18s ease, transform .15s ease, box-shadow .18s ease, opacity .18s ease;">
-                    <i data-lucide="upload"></i> Subir Archivo
-                </button>
-            </form>
+            </div>
+
+            <!-- Vista 2: Manual -->
+            <div id="vistaManual" style="display:none;">
+                <h2>
+                    <button type="button" class="btn-volver" data-volver><i data-lucide="arrow-left"></i></button>
+                    <i data-lucide="pencil-line"></i> Registrar Categorización
+                </h2>
+                <form method="post" id="formManualCategorizacion">
+                    {% csrf_token %}
+                    <div>
+                        <label for="cat_codigo" class="label-moderno">Código Mantis</label>
+                        <input type="text" name="codigo" id="cat_codigo" placeholder="Ej: MANTIS001" style="width:100%; border:1.5px solid #d8dcdd; border-radius:10px; padding:11px 14px; font-family:inherit; font-size:15px;">
+                    </div>
+                    <div>
+                        <label for="cat_categoria" class="label-moderno">Categoría</label>
+                        <select name="categoria" id="cat_categoria" style="width:100%; border:1.5px solid #d8dcdd; border-radius:10px; padding:11px 14px; font-family:inherit; font-size:15px;">
+                            <option value="">Seleccione</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="cat_analisis" class="label-moderno">Análisis</label>
+                        <textarea name="analisis" id="cat_analisis" rows="5" style="width:100%; border:1.5px solid #d8dcdd; border-radius:10px; padding:11px 14px; font-family:inherit; font-size:15px; resize:vertical;"></textarea>
+                    </div>
+                    <button type="submit" class="btn-accion" style="align-self:flex-start; display:inline-flex; align-items:center; gap:8px; border:none; padding:12px 22px; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; background: var(--azul-medio); color:var(--blanco); box-shadow: 0 4px 12px rgba(16,87,136,0.25); transition: background .18s ease, transform .15s ease, box-shadow .18s ease, opacity .18s ease;">
+                        <i data-lucide="check"></i> Guardar
+                    </button>
+                </form>
+            </div>
+
+            <!-- Vista 3: Excel -->
+            <div id="vistaExcel" style="display:none;">
+                <h2>
+                    <button type="button" class="btn-volver" data-volver><i data-lucide="arrow-left"></i></button>
+                    <i data-lucide="file-spreadsheet"></i> Cargar Excel de Categorización
+                </h2>
+                <p class="hint-texto">El archivo debe tener el formato de categorización esperado (.xlsx).</p>
+                <form method="post" action="{% url 'cargar_excel_categorizacion' %}" enctype="multipart/form-data" id="formExcelCategorizacion">
+                    {% csrf_token %}
+                    <div class="dropzone" id="dropzoneCat">
+                        <input type="file" name="archivo" id="inputArchivoExcelCat" accept=".xlsx" class="campo-file-oculto">
+                        <div class="dropzone-contenido" id="dropzoneContenidoCat">
+                            <i data-lucide="upload-cloud" class="dropzone-icono"></i>
+                            <span class="dropzone-titulo">Arrastra tu archivo aquí</span>
+                            <span class="dropzone-sub">o haz clic para seleccionarlo</span>
+                            <span class="dropzone-formatos">.xlsx</span>
+                        </div>
+                        <div class="dropzone-archivo" id="dropzoneArchivoCat" style="display:none;">
+                            <i data-lucide="file-text" class="archivo-icono"></i>
+                            <span class="archivo-nombre" id="archivoNombreCat"></span>
+                            <button type="button" class="archivo-quitar" id="archivoQuitarCat"><i data-lucide="x"></i></button>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-accion" id="btnSubirExcelCat" disabled style="align-self:flex-start; display:inline-flex; align-items:center; gap:8px; border:none; padding:12px 22px; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; background: var(--azul-medio); color:var(--blanco); box-shadow: 0 4px 12px rgba(16,87,136,0.25); transition: background .18s ease, transform .15s ease, box-shadow .18s ease, opacity .18s ease;">
+                        <i data-lucide="upload"></i> Subir Archivo
+                    </button>
+                </form>
+            </div>
+
         </div>
     </div>
 
@@ -628,28 +666,42 @@
             if (!menuFlotante.contains(e.target) && e.target !== btnMenu) abrirMenu(false);
         });
 
-        // --- Modales ---
+        // --- Modal único con vistas ---
+        const modalCategorizacion = document.getElementById('modalCategorizacion');
+        const vistaSeleccion = document.getElementById('vistaSeleccion');
+        const vistaManual = document.getElementById('vistaManual');
+        const vistaExcel = document.getElementById('vistaExcel');
+
+        function mostrarVista(id){
+            [vistaSeleccion, vistaManual, vistaExcel].forEach(v => v.style.display = 'none');
+            document.getElementById(id).style.display = 'block';
+        }
+
         function abrirModal(modal){ modal.classList.add('mostrar'); }
         function cerrarModalFn(modal){ modal.classList.remove('mostrar'); }
 
-        const modalNueva = document.getElementById('modalNuevaCategorizacion');
-        const modalExcelCat = document.getElementById('modalCargarExcelCat');
-
-        document.getElementById('btnNuevaCategorizacion').onclick = function(){
+        document.getElementById('btnAbrirCategorizacion').onclick = function(){
             abrirMenu(false);
-            abrirModal(modalNueva);
+            mostrarVista('vistaSeleccion');
+            abrirModal(modalCategorizacion);
         };
-        document.getElementById('cerrarModalNueva').onclick = function(){ cerrarModalFn(modalNueva); };
-
-        document.getElementById('btnCargarExcelCat').onclick = function(){
-            abrirMenu(false);
-            abrirModal(modalExcelCat);
+        document.getElementById('cerrarModalCategorizacion').onclick = function(){
+            cerrarModalFn(modalCategorizacion);
         };
-        document.getElementById('cerrarModalExcelCat').onclick = function(){ cerrarModalFn(modalExcelCat); };
-
         window.addEventListener('click', function(e){
-            if (e.target === modalNueva) cerrarModalFn(modalNueva);
-            if (e.target === modalExcelCat) cerrarModalFn(modalExcelCat);
+            if (e.target === modalCategorizacion) cerrarModalFn(modalCategorizacion);
+        });
+
+        // Navegación entre vistas
+        document.querySelectorAll('.opcion-metodo').forEach(function(btn){
+            btn.addEventListener('click', function(){
+                mostrarVista(btn.dataset.vista);
+            });
+        });
+        document.querySelectorAll('[data-volver]').forEach(function(btn){
+            btn.addEventListener('click', function(){
+                mostrarVista('vistaSeleccion');
+            });
         });
 
         // --- Dropzone del modal Excel ---
@@ -701,12 +753,12 @@
             if (file){ inputArchivoExcelCat.files = e.dataTransfer.files; mostrarArchivoCat(file); }
         });
 
-        // --- Cerrar modales al enviar (los AJAX ya existentes se disparan igual) ---
+        // --- Cerrar modal único al enviar los formularios ---
         document.getElementById('formManualCategorizacion').addEventListener('submit', function(){
-            cerrarModalFn(modalNueva);
+            cerrarModalFn(modalCategorizacion);
         });
         document.getElementById('formExcelCategorizacion').addEventListener('submit', function(){
-            cerrarModalFn(modalExcelCat);
+            cerrarModalFn(modalCategorizacion);
         });
 
         // --- Filtro multi-select por categoría ---

@@ -738,7 +738,7 @@
         </div>
         <div class="accion-item">
             <span class="accion-label">Descargar Informe</span>
-            <a href="{% url 'descargar_reporte_excel' %}"><i data-lucide="download"></i></a>
+            <button id="btnDescargarInforme" type="button"><i data-lucide="download"></i></button>
         </div>
     </div>
 
@@ -937,6 +937,15 @@
             <div class="alerta-acciones">
                 <button type="button" class="alerta-btn alerta-btn-secundario" id="btnErrorCerrar">Cerrar</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal: Descargando informe (overlay dedicado) -->
+    <div id="overlayDescargaInforme" class="overlay-alerta">
+        <div class="alerta-modal alerta-carga">
+            <div class="spinner"></div>
+            <h3 class="alerta-titulo">Generando informe...</h3>
+            <p class="alerta-texto">Estamos preparando tu archivo Excel. Por favor, no cierres esta ventana.</p>
         </div>
     </div>
 
@@ -1780,6 +1789,51 @@
                 ocultarOverlay(overlayCarga);
                 mostrarError('Error de conexión', 'No se pudo contactar al servidor. Intenta nuevamente.', [], 'error');
             });
+        });
+
+        // === DESCARGA DE INFORME CON BLOQUEO ANTI-SPAM ===
+        const overlayDescargaInforme = document.getElementById('overlayDescargaInforme');
+        const btnDescargarInforme = document.getElementById('btnDescargarInforme');
+        let descargandoInforme = false;
+
+        btnDescargarInforme.addEventListener('click', function(){
+            if (descargandoInforme) return;
+
+            descargandoInforme = true;
+            btnDescargarInforme.disabled = true;
+            btnDescargarInforme.style.opacity = '0.5';
+            btnDescargarInforme.style.cursor = 'not-allowed';
+            abrirMenu(false);
+            mostrarOverlay(overlayDescargaInforme);
+
+            fetch("{% url 'descargar_reporte_excel' %}")
+                .then(function(response){
+                    if (!response.ok) throw new Error('Error al generar el informe');
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    const filename = match ? match[1] : 'informe_inventario.xlsx';
+                    return response.blob().then(blob => ({ blob, filename }));
+                })
+                .then(function({ blob, filename }){
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(function(){
+                    mostrarError('Error', 'No se pudo generar el informe. Intenta nuevamente.', [], 'error');
+                })
+                .finally(function(){
+                    descargandoInforme = false;
+                    btnDescargarInforme.disabled = false;
+                    btnDescargarInforme.style.opacity = '';
+                    btnDescargarInforme.style.cursor = '';
+                    ocultarOverlay(overlayDescargaInforme);
+                });
         });
     </script>
 </body>

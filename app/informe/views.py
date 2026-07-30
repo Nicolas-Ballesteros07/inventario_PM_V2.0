@@ -22,6 +22,7 @@ from django.views.decorators.cache import never_cache
 from django.db.models import Case, When, Value, IntegerField
 import logging
 logger = logging.getLogger(__name__)
+
 #======================================
 # VER EL INFORME (con caché)
 #======================================
@@ -528,9 +529,23 @@ def reactivar_producto_view(request, exclusion_id):
         messages.error(request, mensaje)
 
     return redirect('productos_excluidos')
+#================================================
+# VIEW PARA GENERAR REPORTE DE PRODUCTOS EXCLUIDOS EN EXEL
+#=====================================================
+def descargar_reporte_productos_excluidos(request):
+    workbook = generar_reporte_productos_excluidos()
 
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
+    response["Content-Disposition"] = (
+        'attachment; filename="productos_excluidos.xlsx"'
+    )
 
+    workbook.save(response)
+
+    return response
 
 
 # =======================================
@@ -689,7 +704,7 @@ def descargar_reporte_bajo_stock(request):
 
     return generar_excel_reporte(productos, titulo="Productos con baja duración")
 
-
+#===================================================
 # VIEW PARA LA CARGA DE CATEGORIA DE PRODUCTOS 
 #====================================================
 
@@ -807,3 +822,41 @@ def cargar_excel_vencimientos(request):
         return redirect("lista_vencimientos")
 
     return redirect("lista_vencimientos")
+
+# VIEW PARA DESCARGAR REPORTE DE VENCIMIENTOS EN EXCEL
+def descargar_reporte_vencimientos(request):
+
+    fecha_inicio = request.GET.get("fecha_inicio")
+    fecha_fin = request.GET.get("fecha_fin")
+
+    if not fecha_inicio or not fecha_fin:
+        messages.error(request, "Debe seleccionar una fecha inicial y una fecha final.")
+        return redirect("lista_vencimientos")
+
+    try:
+        fecha_inicio = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+        fecha_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+    except ValueError:
+        messages.error(request, "Formato de fecha inválido.")
+        return redirect("lista_vencimientos")
+
+    if fecha_inicio > fecha_fin:
+        messages.error(request, "La fecha inicial no puede ser mayor que la fecha final.")
+        return redirect("lista_vencimientos")
+
+    workbook = generar_reporte_vencimientos(
+        fecha_inicio,
+        fecha_fin
+    )
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    response[
+        "Content-Disposition"
+    ] = f'attachment; filename="vencimientos_{fecha_inicio}_{fecha_fin}.xlsx"'
+
+    workbook.save(response)
+
+    return response

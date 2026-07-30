@@ -23,6 +23,9 @@ urlpatterns = [
     path('productos-excluidos/', views.productos_excluidos, name='productos_excluidos'),
     # PARA REACTIVAR UN PRODUCTO EXCLUIDO
     path('productos-excluidos/reactivar/<int:exclusion_id>/', views.reactivar_producto_view, name='reactivar_producto'),
+    
+    # PARA DESCARGAR EL REPORTE DE PRODUCTOS EXCLUIDOS
+    path("productos-excluidos/reporte/",views.descargar_reporte_productos_excluidos,name="descargar_reporte_productos_excluidos",),
 
     # VISUALIZAR LOS DATOS DE DETALLES DE COMPRA
     path('compras/', views.compras_lista, name='compras_lista'),
@@ -50,7 +53,8 @@ urlpatterns = [
     path('vencimientos/', views.lista_vencimientos, name='lista_vencimientos'),
     # url para cargar los archivos
     path('vencimientos/cargar/', views.cargar_excel_vencimientos, name='cargar_excel_vencimientos'),
-
+    # url para descargar el reporte de productos con fecha de vencimiento
+    path("vencimientos/reporte/",views.descargar_reporte_vencimientos,name="descargar_reporte_vencimientos",),
 
 
 ]   

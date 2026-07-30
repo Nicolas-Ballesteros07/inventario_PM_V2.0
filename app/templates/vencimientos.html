@@ -179,6 +179,28 @@
         .label-moderno{ display:block; font-size:13px; font-weight:800; color: var(--azul-oscuro); text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
         .hint-texto{ font-size:12.5px; color:#8a949c; margin:0 0 12px; }
 
+        .rango-fechas-grid{
+            display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:4px;
+        }
+        .campo-fecha{ display:flex; flex-direction:column; gap:6px; }
+        .campo-fecha input[type="date"]{
+            padding:11px 14px; border:1.5px solid #d8dcdd; border-radius:10px;
+            font-size:14px; font-family:inherit; color: var(--negro);
+            transition: border-color .18s ease, box-shadow .18s ease;
+        }
+        .campo-fecha input[type="date"]:focus{
+            border-color: var(--azul-medio); outline:none;
+            box-shadow: 0 0 0 4px rgba(16,87,136,0.15);
+        }
+        .presets-fecha{ display:flex; gap:8px; margin-bottom:10px; }
+        .preset-btn{
+            flex:1; padding:8px 10px; border:1.5px solid #d8dcdd; border-radius:8px;
+            background: var(--blanco); color: var(--azul-medio); font-weight:700; font-size:12.5px;
+            cursor:pointer; transition: background .18s ease, border-color .18s ease, color .18s ease;
+        }
+        .preset-btn:hover{ background: var(--azul-medio); border-color: var(--azul-medio); color: var(--blanco); }
+        .preset-btn.activo{ background: var(--azul-medio); border-color: var(--azul-medio); color: var(--blanco); }
+
         .radio-tipo-archivo{ display:flex; gap:14px; margin-bottom:8px; }
         .radio-tipo-archivo label{
             flex:1; display:flex; align-items:center; gap:8px; padding:12px 14px;
@@ -398,6 +420,10 @@
             <span class="accion-label">Cargar Excel</span>
             <button id="btnCargarExcelVenc"><i data-lucide="file-spreadsheet"></i></button>
         </div>
+        <div class="accion-item">
+            <span class="accion-label">Descargar Reporte</span>
+            <button id="btnDescargarReporteVenc"><i data-lucide="download"></i></button>
+        </div>
     </div>
 
     <!-- Modal: Cargar Excel de Vencimientos -->
@@ -438,6 +464,38 @@
 
                 <button type="submit" class="btn-accion" id="btnSubirExcelVenc" disabled>
                     <i data-lucide="upload"></i> Subir Archivo
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Descargar Reporte por Fechas -->
+    <div id="modalDescargarReporteVenc" class="modal">
+        <div class="modal-content">
+            <span class="close" id="cerrarModalDescargarVenc">&times;</span>
+            <h2><i data-lucide="calendar"></i> Descargar Reporte de Vencimientos</h2>
+            <p class="hint-texto">Selecciona el rango de fechas de vencimiento a incluir en el reporte.</p>
+
+            <form method="get" action="{% url 'descargar_reporte_vencimientos' %}" id="formDescargarReporteVenc">
+                <div class="rango-fechas-grid">
+                    <div class="campo-fecha">
+                        <label class="label-moderno"><i data-lucide="calendar-arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> Fecha Inicio</label>
+                        <input type="date" name="fecha_inicio" id="fechaInicioVenc" required>
+                    </div>
+                    <div class="campo-fecha">
+                        <label class="label-moderno"><i data-lucide="calendar-arrow-down" style="width:14px;height:14px;vertical-align:-2px"></i> Fecha Fin</label>
+                        <input type="date" name="fecha_fin" id="fechaFinVenc" required>
+                    </div>
+                </div>
+
+                <div class="presets-fecha">
+                    <button type="button" class="preset-btn" data-dias="30">Próx. 30 días</button>
+                    <button type="button" class="preset-btn" data-dias="60">Próx. 60 días</button>
+                    <button type="button" class="preset-btn" data-dias="90">Próx. 90 días</button>
+                </div>
+
+                <button type="submit" class="btn-accion" style="align-self:center; margin-top:6px;">
+                    <i data-lucide="file-spreadsheet"></i> Descargar Excel
                 </button>
             </form>
         </div>
@@ -494,6 +552,7 @@
         btnMenu.onclick = function(e){ e.stopPropagation(); abrirMenu(!menuFlotante.classList.contains('visible')); };
         document.addEventListener('click', function(e){ if (!menuFlotante.contains(e.target) && e.target !== btnMenu) abrirMenu(false); });
 
+        // Modal Cargar Excel
         const modalVenc = document.getElementById('modalCargarExcelVenc');
         function abrirModal(modal){ modal.classList.add('mostrar'); }
         function cerrarModalFn(modal){ modal.classList.remove('mostrar'); }
@@ -502,6 +561,20 @@
         document.getElementById('cerrarModalVenc').onclick = function(){ cerrarModalFn(modalVenc); };
         window.addEventListener('click', function(e){ if (e.target === modalVenc) cerrarModalFn(modalVenc); });
 
+        // Modal Descargar Reporte
+        const modalDescargar = document.getElementById('modalDescargarReporteVenc');
+        document.getElementById('btnDescargarReporteVenc').onclick = function(){ abrirMenu(false); abrirModal(modalDescargar); };
+        document.getElementById('cerrarModalDescargarVenc').onclick = function(){ cerrarModalFn(modalDescargar); };
+        window.addEventListener('click', function(e){ if (e.target === modalDescargar) cerrarModalFn(modalDescargar); });
+
+        // Cerrar modal al enviar el formulario de descarga y mostrar overlay de carga
+        document.getElementById('formDescargarReporteVenc').addEventListener('submit', function(){
+            cerrarModalFn(modalDescargar);
+            mostrarOverlay(overlayCarga);
+            setTimeout(() => ocultarOverlay(overlayCarga), 2500);
+        });
+
+        // Dropzone para cargar Excel
         const dropzoneVenc = document.getElementById('dropzoneVenc');
         const inputArchivoExcelVenc = document.getElementById('inputArchivoExcelVenc');
         const dropzoneContenidoVenc = document.getElementById('dropzoneContenidoVenc');
@@ -536,6 +609,7 @@
             if (file){ inputArchivoExcelVenc.files = e.dataTransfer.files; mostrarArchivoVenc(file); }
         });
 
+        // Overlays
         const overlayCarga = document.getElementById('overlayCarga');
         const overlayExito = document.getElementById('overlayExito');
         const overlayError = document.getElementById('overlayError');
@@ -668,6 +742,23 @@
             searchInput.addEventListener('input', () => { paginaActual = 1; filterRows(); });
 
             filterRows();
+        });
+
+        // Presets de fechas
+        document.querySelectorAll('.preset-btn').forEach(function(btn){
+            btn.addEventListener('click', function(){
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('activo'));
+                btn.classList.add('activo');
+
+                const dias = parseInt(btn.dataset.dias, 10);
+                const hoy = new Date();
+                const fin = new Date();
+                fin.setDate(hoy.getDate() + dias);
+
+                const formatoISO = (d) => d.toISOString().split('T')[0];
+                document.getElementById('fechaInicioVenc').value = formatoISO(hoy);
+                document.getElementById('fechaFinVenc').value = formatoISO(fin);
+            });
         });
     </script>
 </body>

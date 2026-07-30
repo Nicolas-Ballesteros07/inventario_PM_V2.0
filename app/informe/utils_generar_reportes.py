@@ -44,6 +44,7 @@ from openpyxl import Workbook, load_workbook
 from datetime import datetime
 from django.http import HttpResponse
 from openpyxl.worksheet.datavalidation import DataValidation
+from .models import *
 
 
 
@@ -308,8 +309,7 @@ def preparar_datos_productos_con_compras(productos):
                 'proveedor': '',
                 'categoria': categorizacion.get_tipo_categoria_display() if categorizacion else '',
                 'analisis': categorizacion.analisis if categorizacion else '',
-                'fecha_compra': None,
-                'es_principal': True,  # marcamos que no tiene compras
+                'fecha_compra': None
             })
         else:
             # Para cada compra (ordenadas por fecha desc según tu consulta)
@@ -322,8 +322,7 @@ def preparar_datos_productos_con_compras(productos):
                     'proveedor': compra.proveedor,
                     'categoria': categorizacion.get_tipo_categoria_display() if categorizacion else '',
                     'analisis': categorizacion.analisis if categorizacion else '',
-                    'fecha_compra': compra.fecha_compra,
-                    'es_principal': (idx == 0),  # la primera es la principal
+                    'fecha_compra': compra.fecha_compra
                 })
     return datos
 
@@ -348,15 +347,14 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
     ws2 = wb["OrdenCompra"]  # ya trae la estructura de 3 filas de cabecera
 
     # Limpiar filas de datos previas (si la plantilla trae ejemplos)
-    ws1.delete_rows(2, ws1.max_row)
+    ws1.delete_rows(1, ws1.max_row)
     if ws2.max_row > 3:
         ws2.delete_rows(4, ws2.max_row - 3)
 
     # --- Encabezados Hoja1 ---
     headers = [
         "Código", "Nombre", "Duración", "Cantidad a Solicitar",
-        "Proveedor", "Categoría", "Análisis", "Fecha de Compra",
-        "Principal", "Seleccionar"
+        "Proveedor", "Categoría", "Análisis", "Fecha de Compra", "Seleccionar"
     ]
     ws1.append(headers)
     header_font = Font(bold=True, color="FFFFFF")
@@ -371,16 +369,18 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
     dv = DataValidation(type="list", formula1='"Sí,No"', allow_blank=True)
     ws1.add_data_validation(dv)
 
+    # después
     for d in datos:
         row = [
             d['codigo'], d['nombre'], d['duracion'], d['solicitar'],
             d['proveedor'], d['categoria'], d['analisis'],
             d['fecha_compra'].strftime("%d/%m/%Y") if d['fecha_compra'] else "",
-            "Sí" if d['es_principal'] else "",
-            "No",  # valor por defecto de la casilla "Seleccionar"
+            "No",
         ]
         ws1.append(row)
         dv.add(ws1.cell(row=ws1.max_row, column=10))
+
+    ws1.auto_filter.ref = f"A1:J{ws1.max_row}"
 
     for col in ws1.columns:
         max_length = 0
@@ -393,14 +393,106 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
                 pass
         ws1.column_dimensions[column].width = min(max_length + 2, 40)
 
-    wb.save("/tmp/reporte_generado.xlsm")
-    with open("/tmp/reporte_generado.xlsm", "rb") as f:
-        contenido = f.read()
+    # Guardar en memoria con BytesIO en lugar de disco
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
 
     response = HttpResponse(
-        content=contenido,
+        content=buffer.getvalue(),
         content_type='application/vnd.ms-excel.sheet.macroEnabled.12'
     )
     filename = f"reporte_baja_duracion_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsm"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+#===============================================
+# GENERAR REPORTE DE PRODUCTOS EXCLUIDOS
+#===============================================
+def generar_reporte_productos_excluidos():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Productos Excluidos"
+
+    encabezados = [
+        "Código Mantis",
+        "Descripción",
+        "Observación",
+        "Fecha Exclusión",
+    ]
+
+    for col, titulo in enumerate(encabezados, start=1):
+        celda = ws.cell(row=1, column=col)
+        celda.value = titulo
+        celda.font = Font(bold=True)
+
+    # SOLO PRODUCTOS ACTUALMENTE EXCLUIDOS
+    exclusiones = (
+        ProductoExcluido.objects
+        .filter(activo=True)
+        .select_related("producto")
+        .order_by("-fecha_creacion")
+    )
+
+    fila = 2
+
+    for exclusion in exclusiones:
+        ws.cell(fila, 1).value = exclusion.producto.codigo_mantis
+        ws.cell(fila, 2).value = exclusion.producto.descripcion
+        ws.cell(fila, 3).value = exclusion.observacion or ""
+        ws.cell(fila, 4).value = exclusion.fecha_creacion.strftime("%d/%m/%Y %H:%M")
+        fila += 1
+
+    # Ajustar ancho automáticamente
+    for columna in ws.columns:
+        ancho = max(len(str(celda.value or "")) for celda in columna)
+        ws.column_dimensions[columna[0].column_letter].width = ancho + 5
+
+    return wb
+
+#================================================
+# REPORTE DE FECHAS DE VENCIMIENTO 
+#================================================
+def generar_reporte_vencimientos(fecha_inicio, fecha_fin):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Vencimientos"
+
+    encabezados = [
+        "Código Mantis",
+        "Descripción",
+        "Lote",
+        "Fecha Vencimiento",
+        "Fecha Carga",
+    ]
+
+    for col, encabezado in enumerate(encabezados, start=1):
+        celda = ws.cell(row=1, column=col)
+        celda.value = encabezado
+        celda.font = Font(bold=True)
+
+    vencimientos = (
+        Vencimiento.objects
+        .select_related("producto")
+        .filter(
+            fecha_vencimiento__range=[fecha_inicio, fecha_fin]
+        )
+        .order_by("fecha_vencimiento")
+    )
+
+    fila = 2
+
+    for item in vencimientos:
+        ws.cell(fila, 1).value = item.producto.codigo_mantis
+        ws.cell(fila, 2).value = item.producto.descripcion
+        ws.cell(fila, 3).value = item.lote
+        ws.cell(fila, 4).value = item.fecha_vencimiento.strftime("%d/%m/%Y")
+        ws.cell(fila, 5).value = item.fecha_carga.strftime("%d/%m/%Y %H:%M")
+        fila += 1
+
+    # Ajustar ancho automáticamente
+    for columna in ws.columns:
+        longitud = max(len(str(celda.value or "")) for celda in columna)
+        ws.column_dimensions[columna[0].column_letter].width = longitud + 5
+
+    return wb

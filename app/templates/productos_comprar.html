@@ -306,6 +306,26 @@
             box-shadow: 0 0 0 4px rgba(16,87,136,0.15);
         }
 
+        /* ===== OVERLAY DE DESCARGA ===== */
+        .overlay-alerta{
+            display:none; position:fixed; inset:0; z-index:2100;
+            background: rgba(22,43,71,0.55); backdrop-filter: blur(2px);
+            align-items:center; justify-content:center;
+        }
+        .overlay-alerta.mostrar{ display:flex; }
+        .alerta-modal{
+            background: var(--blanco); border-radius:18px; padding:36px 32px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.35); max-width:420px; width:90%;
+            text-align:center; animation: popIn .28s ease both; color: var(--negro);
+        }
+        .alerta-carga .spinner{
+            width:52px; height:52px; border-radius:50%; border:5px solid #d8e6ef; border-top-color: var(--azul-medio);
+            animation: spin .8s linear infinite; margin:0 auto 18px;
+        }
+        @keyframes spin{ to{ transform: rotate(360deg); } }
+        .alerta-titulo{ font-size:19px; font-weight:800; color: var(--azul-oscuro); margin:0 0 8px; }
+        .alerta-texto{ font-size:14px; color:#4a5560; line-height:1.5; margin:0 0 6px; }
+
         ::-webkit-scrollbar{ width:10px; height:10px; }
         ::-webkit-scrollbar-thumb{ background: var(--azul-medio); border-radius:10px; }
 
@@ -391,7 +411,6 @@
             <tbody>
             {% for item in productos %}
                 {% with detalle=item.detalle compras=item.compras %}
-                <!-- después -->
                 <tr class="fila-principal" data-search="{{ detalle.producto.codigo_mantis|lower }} {{ detalle.producto.descripcion|lower }}">
                     <td>
                         {% if compras|length > 1 %}
@@ -469,11 +488,20 @@
         </button>
         <span class="tooltip-acciones">Acciones</span>
     </div>
-    <div id="menuFlotante" class="menu-flotante">  
+    <div id="menuFlotante" class="menu-flotante">
         <!-- Descargar Excel -->
         <div class="accion-item">
             <span class="accion-label">Descargar Excel</span>
-            <a href="{% url 'reporte_excel_productos' %}" download><i data-lucide="download"></i></a>
+            <button id="btnDescargarExcel" type="button"><i data-lucide="download"></i></button>
+        </div>
+    </div>
+
+    <!-- ===== OVERLAY DE DESCARGA ===== -->
+    <div id="overlayDescarga" class="overlay-alerta">
+        <div class="alerta-modal alerta-carga">
+            <div class="spinner"></div>
+            <h3 class="alerta-titulo">Generando reporte...</h3>
+            <p class="alerta-texto">Estamos preparando tu archivo Excel. Por favor, no cierres esta ventana.</p>
         </div>
     </div>
 
@@ -534,7 +562,7 @@
             const table = document.querySelector('table');
             const tbody = table.querySelector('tbody');
             const rows = Array.from(tbody.querySelectorAll('tr.fila-principal'));
-            const noDataRow = tbody.querySelector('tr:not(.fila-principal)'); // mensaje "No hay productos"
+            const noDataRow = tbody.querySelector('tr:not(.fila-principal)');
             const searchInput = document.getElementById('searchInput');
             const paginationWrap = document.getElementById('paginationWrap');
             const paginationInfo = document.getElementById('paginationInfo');
@@ -559,7 +587,6 @@
                         return searchData.includes(term);
                     });
                 }
-                // Si no hay filas filtradas y no hay filas en absoluto, mostrar mensaje de no datos
                 if (filasFiltradas.length === 0 && rows.length === 0) {
                     if (noDataRow) noDataRow.style.display = '';
                 } else {
@@ -578,17 +605,13 @@
                 const inicio = (paginaActual - 1) * REG_POR_PAGINA;
                 const fin = Math.min(inicio + REG_POR_PAGINA, total);
 
-                // Ocultar todas las filas principales y extra
                 rows.forEach(row => row.style.display = 'none');
-                // Ocultar todas las filas extra (las que no son principales)
                 tbody.querySelectorAll('tr.fila-proveedor-extra').forEach(tr => tr.style.display = 'none');
 
-                // Mostrar las filas del rango actual
                 for (let i = inicio; i < fin; i++) {
                     filasFiltradas[i].style.display = '';
                 }
 
-                // Actualizar paginación
                 if (total > REG_POR_PAGINA) {
                     paginationWrap.style.display = 'flex';
                     paginationInfo.textContent = `Página ${paginaActual} de ${totalPaginas}`;
@@ -598,11 +621,9 @@
                     paginationWrap.style.display = 'none';
                 }
 
-                // Recrear los íconos de lucide (por si hay cambios)
                 lucide.createIcons();
             }
 
-            // Eventos de paginación
             btnPrev.addEventListener('click', function(){
                 if (paginaActual > 1) {
                     paginaActual--;
@@ -617,16 +638,55 @@
                 }
             });
 
-            // Evento de búsqueda
             searchInput.addEventListener('input', filtrarFilas);
 
-            // Inicializar
             filtrarFilas();
-
-            // Al hacer clic en botones de flecha, no afecta la paginación
-            // pero debemos asegurarnos de que las filas extra se muestren correctamente
-            // El evento de clic ya está definido arriba.
         })();
+
+        // ===== DESCARGA DE EXCEL CON BLOQUEO ANTI-SPAM =====
+        const overlayDescarga = document.getElementById('overlayDescarga');
+        const btnDescargarExcel = document.getElementById('btnDescargarExcel');
+        let descargando = false;
+
+        btnDescargarExcel.addEventListener('click', function(){
+            if (descargando) return;
+
+            descargando = true;
+            btnDescargarExcel.disabled = true;
+            btnDescargarExcel.style.opacity = '0.5';
+            btnDescargarExcel.style.cursor = 'not-allowed';
+            overlayDescarga.classList.add('mostrar');
+            toggleMenu(false);
+
+            fetch("{% url 'reporte_excel_productos' %}")
+                .then(function(response){
+                    if (!response.ok) throw new Error('Error al generar el reporte');
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    const filename = match ? match[1] : 'reporte_baja_duracion.xlsm';
+                    return response.blob().then(blob => ({ blob, filename }));
+                })
+                .then(function({ blob, filename }){
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(function(){
+                    alert('No se pudo generar el reporte. Intenta nuevamente.');
+                })
+                .finally(function(){
+                    descargando = false;
+                    btnDescargarExcel.disabled = false;
+                    btnDescargarExcel.style.opacity = '';
+                    btnDescargarExcel.style.cursor = '';
+                    overlayDescarga.classList.remove('mostrar');
+                });
+        });
     </script>
 </body>
 </html>
