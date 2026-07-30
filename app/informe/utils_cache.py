@@ -3,7 +3,7 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-CACHE_TIMEOUT = 60 * 60 * 6  # 6 horas (respaldo; se invalida manualmente al escribir)
+CACHE_TIMEOUT = 60 * 15  # 15 minutos
 
 CACHE_KEY_INFORME = 'cache_informe_datos'
 CACHE_KEY_LISTA_PRODUCTOS = 'cache_lista_productos'
