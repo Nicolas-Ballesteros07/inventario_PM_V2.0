@@ -45,6 +45,7 @@ from datetime import datetime
 from django.http import HttpResponse
 from openpyxl.worksheet.datavalidation import DataValidation
 from .models import *
+from django.contrib.staticfiles import finders
 
 
 
@@ -339,9 +340,15 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
     """
     datos = preparar_datos_productos_con_compras(productos)
 
-    # --- Cargar la PLANTILLA macro-habilitada (contiene ya el VBA) ---
-    # Esta plantilla vive en tu proyecto, ej: static/plantillas/plantilla_reporte_base.xlsm
-    wb = load_workbook("static/plantillas/plantilla_reporte_base.xlsm", keep_vba=True)
+    # --- Localizar la plantilla macro-habilitada mediante finders ---
+    ruta_plantilla = finders.find("plantillas/plantilla_reporte_base.xlsm")
+    if not ruta_plantilla:
+        raise FileNotFoundError(
+            "No se encontró la plantilla plantillas/plantilla_reporte_base.xlsm. "
+            "Verifica que esté en tu carpeta static/ y que STATICFILES_DIRS/STATIC_ROOT "
+            "estén configurados correctamente."
+        )
+    wb = load_workbook(ruta_plantilla, keep_vba=True)
 
     ws1 = wb["Detalle"]
     ws2 = wb["OrdenCompra"]  # ya trae la estructura de 3 filas de cabecera
