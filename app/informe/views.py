@@ -340,7 +340,8 @@ def excluir_productos(request):
             if form_manual.is_valid():
                 codigos = form_manual.limpiar_codigos()
                 observacion = form_manual.cleaned_data.get('observacion', '')
-                creados, no_encontrados, ya_excluidos = _excluir_codigos(codigos, observacion)
+                codigos_con_obs = [(codigo, observacion) for codigo in codigos]
+                creados, no_encontrados, ya_excluidos = _excluir_codigos(codigos_con_obs)
                 if creados:
                     invalidar_cache_producto()
 
@@ -379,13 +380,11 @@ def excluir_productos(request):
                 finally:
                     os.remove(ruta_temporal)
 
-                creados, no_encontrados, ya_excluidos = [], [], []
-                for codigo, obs_fila in filas:
-                    obs_final = obs_fila or observacion_general
-                    c, ne, ye = _excluir_codigos([codigo], obs_final)
-                    creados += c
-                    no_encontrados += ne
-                    ya_excluidos += ye
+                codigos_con_obs = [
+                    (codigo, obs_fila or observacion_general)
+                    for codigo, obs_fila in filas
+                ]
+                creados, no_encontrados, ya_excluidos = _excluir_codigos(codigos_con_obs)
 
                 if creados:
                     invalidar_cache_producto()
@@ -438,36 +437,70 @@ def _respuesta_json_resumen(creados, no_encontrados, ya_excluidos):
 
 
 @transaction.atomic
-def _excluir_codigos(codigos, observacion):
-    creados, no_encontrados, ya_excluidos = [], [], []
+def _excluir_codigos(codigos_con_obs):
+    """
+    codigos_con_obs: lista de tuplas (codigo, observacion).
+    Versión bulk: en vez de 3-4 queries POR código, hace todo en un
+    puñado de consultas totales, sin importar cuántos códigos se pasen.
+    """
+    codigos = [c for c, _ in codigos_con_obs]
 
-    for codigo in codigos:
-        try:
-            producto = Producto.objects.get(codigo_mantis=codigo)
-        except Producto.DoesNotExist:
+    # --- 1. Traer todos los productos involucrados en una sola consulta ---
+    productos_por_codigo = {
+        p.codigo_mantis: p
+        for p in Producto.objects.filter(codigo_mantis__in=codigos)
+    }
+
+    no_encontrados = []
+    validos = []  # (codigo, producto, observacion)
+    for codigo, observacion in codigos_con_obs:
+        producto = productos_por_codigo.get(codigo)
+        if not producto:
             no_encontrados.append(codigo)
             continue
+        validos.append((codigo, producto, observacion))
 
-        exclusion_activa = ProductoExcluido.objects.filter(
-            producto=producto, activo=True
-        ).first()
+    if not validos:
+        return [], no_encontrados, []
 
-        if exclusion_activa:
+    # --- 2. Traer las exclusiones activas ya existentes en una sola consulta ---
+    producto_ids = [p.pk for _, p, _ in validos]
+    exclusiones_activas_ids = set(
+        ProductoExcluido.objects
+        .filter(producto_id__in=producto_ids, activo=True)
+        .values_list('producto_id', flat=True)
+    )
+
+    # --- 3. Separar en "a crear" vs "ya excluidos", evitando duplicados dentro del mismo lote ---
+    a_crear = []
+    productos_a_desactivar = []
+    creados = []
+    ya_excluidos = []
+    vistos = set()
+
+    for codigo, producto, observacion in validos:
+        if producto.pk in exclusiones_activas_ids or producto.pk in vistos:
             ya_excluidos.append(codigo)
             continue
 
-        ProductoExcluido.objects.create(
+        vistos.add(producto.pk)
+        a_crear.append(ProductoExcluido(
             producto=producto,
             activo=True,
             observacion=observacion or ''
-        )
+        ))
 
-        # Marcar el producto como inactivo en la BD
         if producto.estado:
             producto.estado = False
-            producto.save(update_fields=['estado'])
+            productos_a_desactivar.append(producto)
 
         creados.append(codigo)
+
+    # --- 4. Guardar en bloque dentro de una sola transacción ---
+    if a_crear:
+        ProductoExcluido.objects.bulk_create(a_crear, batch_size=500)
+    if productos_a_desactivar:
+        Producto.objects.bulk_update(productos_a_desactivar, ['estado'], batch_size=500)
 
     return creados, no_encontrados, ya_excluidos
 
@@ -779,13 +812,13 @@ def descargar_reporte_categorizaciones(request):
 
     response["Content-Disposition"] = (
         'attachment; filename="reporte_categorizaciones.xlsx"'
-    )
+    ) 
 
     workbook.save(response)
 
     return response
 
-# VIEW PARA CARGAR FECHAS DE VENCIMIENTO
+
 #====================================================
 # VIEW: LISTA DE VENCIMIENTOS
 #====================================================
@@ -804,7 +837,6 @@ def cargar_excel_vencimientos(request):
     if request.method == "POST":
         es_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         archivo = request.FILES.get("archivo")
-        tipo_archivo = request.POST.get("tipo_archivo")
 
         if not archivo:
             if es_ajax:
@@ -819,13 +851,7 @@ def cargar_excel_vencimientos(request):
             messages.error(request, msg)
             return redirect("lista_vencimientos")
 
-        if tipo_archivo not in ("detallado_compras", "fecha_vencimiento"):
-            if es_ajax:
-                return JsonResponse({"status": "error", "message": "Debes seleccionar el tipo de archivo."}, status=400)
-            messages.error(request, "Debes seleccionar el tipo de archivo.")
-            return redirect("lista_vencimientos")
-
-        mensaje, no_encontrados = importar_vencimientos_excel(archivo, tipo_archivo)
+        mensaje, no_encontrados = importar_vencimientos_excel(archivo)
 
         if es_ajax:
             return JsonResponse({

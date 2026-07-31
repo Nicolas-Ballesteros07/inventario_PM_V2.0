@@ -391,9 +391,9 @@
         <div class="tabla-scroll">
         <table>
             <colgroup>
-                <col style="width:4%"><col style="width:12%"><col style="width:26%"><col style="width:10%">
-                <col style="width:12%"><col style="width:12%"><col style="width:10%"><col style="width:8%">
-                <col style="width:10%">
+                <col style="width:4%"><col style="width:10%"><col style="width:22%"><col style="width:9%">
+                <col style="width:11%"><col style="width:9%"><col style="width:10%"><col style="width:9%">
+                <col style="width:8%"><col style="width:8%">
             </colgroup>
             <thead>
                 <tr>
@@ -402,6 +402,7 @@
                     <th>Nombre</th>
                     <th>Duración</th>
                     <th>Cantidad a Solicitar</th>
+                    <th>Último Costo</th>
                     <th>Proveedor</th>
                     <th>Categoría</th>
                     <th>Análisis</th>
@@ -421,6 +422,7 @@
                     <td style="text-align:left;">{{ detalle.producto.descripcion }}</td>
                     <td class="duracion-baja">{{ detalle.duracion|sin_ceros:1 }}</td>
                     <td>{{ detalle.solicitar|sin_ceros:2 }}</td>
+                    <td>{{ detalle.costo|sin_ceros:2 }}</td>
 
                     {% if compras %}
                         <td>{{ compras.0.proveedor }}</td>
@@ -455,7 +457,7 @@
                     {% if not forloop.first %}
                     <tr class="fila-proveedor-extra grupo-{{ forloop.parentloop.counter }}" id="extra-{{ forloop.parentloop.counter }}-{{ forloop.counter0 }}">
                         <td></td>
-                        <td colspan="4" style="text-align:right;">Proveedor anterior:</td>
+                        <td colspan="5" style="text-align:right;">Proveedor anterior:</td>
                         <td>{{ c.proveedor }}</td>
                         <td></td>
                         <td></td>
@@ -466,7 +468,7 @@
 
                 {% endwith %}
             {% empty %}
-                <tr><td colspan="9">No hay productos con duración menor a 1.0.</td></tr>
+                <tr><td colspan="10">No hay productos con duración menor a 1.0.</td></tr>
             {% endfor %}
             </tbody>
         </table>

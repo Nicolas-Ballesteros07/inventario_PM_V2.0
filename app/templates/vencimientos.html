@@ -201,16 +201,6 @@
         .preset-btn:hover{ background: var(--azul-medio); border-color: var(--azul-medio); color: var(--blanco); }
         .preset-btn.activo{ background: var(--azul-medio); border-color: var(--azul-medio); color: var(--blanco); }
 
-        .radio-tipo-archivo{ display:flex; gap:14px; margin-bottom:8px; }
-        .radio-tipo-archivo label{
-            flex:1; display:flex; align-items:center; gap:8px; padding:12px 14px;
-            border:1.5px solid #d8dcdd; border-radius:12px; cursor:pointer; font-weight:600; font-size:13.5px;
-            transition: border-color .18s ease, background .18s ease;
-        }
-        .radio-tipo-archivo label:hover{ border-color: var(--azul-medio); }
-        .radio-tipo-archivo input[type="radio"]{ accent-color: var(--azul-medio); width:16px; height:16px; }
-        .radio-tipo-archivo input[type="radio"]:checked + span{ color: var(--azul-medio); }
-
         .dropzone{
             position:relative; border:2.5px dashed #c3cbd1; border-radius:16px; padding:28px 20px; text-align:center;
             background: linear-gradient(180deg, #fbfcfd 0%, #f3f6f8 100%); cursor:pointer;
@@ -371,15 +361,16 @@
 
         <div class="tabla-scroll">
         <table id="vencimientosTable">
-            <colgroup>
-                <col style="width:14%"><col style="width:38%"><col style="width:16%">
-                <col style="width:16%"><col style="width:16%">
+             <colgroup>
+                <col style="width:12%"><col style="width:32%"><col style="width:13%">
+                <col style="width:11%"><col style="width:16%"><col style="width:16%">
             </colgroup>
             <thead>
                 <tr>
                     <th>Código</th>
                     <th>Nombre / Descripción</th>
                     <th>Lote</th>
+                    <th>Unidades</th>
                     <th>Fecha Vencimiento</th>
                     <th>Fecha de Carga</th>
                 </tr>
@@ -390,12 +381,13 @@
                     <td>{{ item.producto.codigo_mantis }}</td>
                     <td style="text-align:left;">{{ item.producto.descripcion }}</td>
                     <td>{{ item.lote }}</td>
+                    <td>{{ item.unidades|floatformat:"-2"|default:"-" }}</td>
                     <td class="venc-proximo">{{ item.fecha_vencimiento|date:"d/m/Y" }}</td>
                     <td>{{ item.fecha_carga|date:"d/m/Y H:i" }}</td>
                 </tr>
             {% empty %}
                 <tr id="noRecordsRow">
-                    <td colspan="5">No existen registros de vencimientos.</td>
+                    <td colspan="6">No existen registros de vencimientos.</td>
                 </tr>
             {% endfor %}
             </tbody>
@@ -431,21 +423,10 @@
         <div class="modal-content">
             <span class="close" id="cerrarModalVenc">&times;</span>
             <h2><i data-lucide="file-spreadsheet"></i> Cargar Excel de Vencimientos</h2>
-            <p class="hint-texto">Selecciona el tipo de archivo que vas a subir.</p>
+            <p class="hint-texto">Sube el Excel de vencimientos (.xlsx o .xls).</p>
 
             <form method="post" action="{% url 'cargar_excel_vencimientos' %}" enctype="multipart/form-data" id="formExcelVenc">
                 {% csrf_token %}
-
-                <div class="radio-tipo-archivo">
-                    <label>
-                        <input type="radio" name="tipo_archivo" value="detallado_compras" required>
-                        <span>Detallado de Compras</span>
-                    </label>
-                    <label>
-                        <input type="radio" name="tipo_archivo" value="fecha_vencimiento" required>
-                        <span>Fechas de Vencimiento</span>
-                    </label>
-                </div>
 
                 <div class="dropzone" id="dropzoneVenc">
                     <input type="file" name="archivo" id="inputArchivoExcelVenc" accept=".xlsx,.xls" class="campo-file-oculto">
@@ -687,7 +668,7 @@
                 noMatchRow.id = 'noMatchRow';
                 noMatchRow.style.display = 'none';
                 const td = document.createElement('td');
-                td.colSpan = 5;
+                td.colSpan = 6;
                 td.textContent = 'No se encontraron registros.';
                 noMatchRow.appendChild(td);
                 tbody.appendChild(noMatchRow);

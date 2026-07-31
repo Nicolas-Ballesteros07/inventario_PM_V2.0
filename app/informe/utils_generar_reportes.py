@@ -310,7 +310,8 @@ def preparar_datos_productos_con_compras(productos):
                 'proveedor': '',
                 'categoria': categorizacion.get_tipo_categoria_display() if categorizacion else '',
                 'analisis': categorizacion.analisis if categorizacion else '',
-                'fecha_compra': None
+                'fecha_compra': None,
+                'costo': detalle.costo,
             })
         else:
             # Para cada compra (ordenadas por fecha desc según tu consulta)
@@ -323,7 +324,8 @@ def preparar_datos_productos_con_compras(productos):
                     'proveedor': compra.proveedor,
                     'categoria': categorizacion.get_tipo_categoria_display() if categorizacion else '',
                     'analisis': categorizacion.analisis if categorizacion else '',
-                    'fecha_compra': compra.fecha_compra
+                    'fecha_compra': compra.fecha_compra,
+                    'costo': detalle.costo,
                 })
     return datos
 
@@ -361,7 +363,8 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
     # --- Encabezados Hoja1 ---
     headers = [
         "Código", "Nombre", "Duración", "Cantidad a Solicitar",
-        "Proveedor", "Categoría", "Análisis", "Fecha de Compra", "Seleccionar"
+        "Proveedor", "Categoría", "Análisis", "Fecha de Compra", "Último Costo","Seleccionar"
+
     ]
     ws1.append(headers)
     header_font = Font(bold=True, color="FFFFFF")
@@ -376,17 +379,19 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
     dv = DataValidation(type="list", formula1='"Sí,No"', allow_blank=True)
     ws1.add_data_validation(dv)
 
+    # DESPUÉS
     for d in datos:
         row = [
             d['codigo'], d['nombre'], d['duracion'], d['solicitar'],
             d['proveedor'], d['categoria'], d['analisis'],
             d['fecha_compra'].strftime("%d/%m/%Y") if d['fecha_compra'] else "",
+            d['costo'],
             "No",
         ]
         ws1.append(row)
-        dv.add(ws1.cell(row=ws1.max_row, column=9))  # columna I (9) porque son 9 columnas (A-I)
+        dv.add(ws1.cell(row=ws1.max_row, column=10))  # columna J (10), "Seleccionar" — la macro depende de esto
 
-    ws1.auto_filter.ref = f"A1:I{ws1.max_row}"  # rango hasta columna I
+    ws1.auto_filter.ref = f"A1:J{ws1.max_row}"  # rango hasta columna J (ahora 10 columnas)
 
     for col in ws1.columns:
         max_length = 0
@@ -455,6 +460,13 @@ def generar_reporte_productos_excluidos():
         ws.column_dimensions[columna[0].column_letter].width = ancho + 5
 
     return wb
+# utils para formatear unidades de manera consistente en los reportes de vencimientos y categorizaciones.
+def _formatear_unidades(valor):
+    if valor is None:
+        return None
+    if valor == valor.to_integral_value():
+        return int(valor)
+    return float(valor)
 
 #================================================
 # REPORTE DE FECHAS DE VENCIMIENTO 
@@ -468,6 +480,7 @@ def generar_reporte_vencimientos(fecha_inicio, fecha_fin):
         "Código Mantis",
         "Descripción",
         "Lote",
+        "Unidades",
         "Fecha Vencimiento",
         "Fecha Carga",
     ]
@@ -492,8 +505,9 @@ def generar_reporte_vencimientos(fecha_inicio, fecha_fin):
         ws.cell(fila, 1).value = item.producto.codigo_mantis
         ws.cell(fila, 2).value = item.producto.descripcion
         ws.cell(fila, 3).value = item.lote
-        ws.cell(fila, 4).value = item.fecha_vencimiento.strftime("%d/%m/%Y")
-        ws.cell(fila, 5).value = item.fecha_carga.strftime("%d/%m/%Y %H:%M")
+        ws.cell(fila, 4).value = _formatear_unidades(item.unidades)
+        ws.cell(fila, 5).value = item.fecha_vencimiento.strftime("%d/%m/%Y")
+        ws.cell(fila, 6).value = item.fecha_carga.strftime("%d/%m/%Y %H:%M")
         fila += 1
 
     # Ajustar ancho automáticamente

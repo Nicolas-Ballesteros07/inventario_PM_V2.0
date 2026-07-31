@@ -223,6 +223,10 @@ def procesar_archivos(archivo_listado, archivo_ventas):
         if cod:
             ventas_dict[cod] = und
 
+    # --- 1. Parsear todas las filas del listado a memoria, sin tocar la BD ---
+    filas_parseadas = []
+    codigos_vistos = set()
+
     for fila in filas_listado:
         codigo = str(fila[col_codigo]).strip() if fila[col_codigo] else ''
         if not codigo:
@@ -237,22 +241,72 @@ def procesar_archivos(archivo_listado, archivo_ventas):
         descripcion = fila[col_descripcion] if col_descripcion < len(fila) else ''
         laboratorio = fila[col_laboratorio] if col_laboratorio < len(fila) else ''
 
-        producto, creado = Producto.objects.get_or_create(
-            codigo_mantis=codigo,
-            defaults={
-                'barras': barras, 'descripcion': descripcion,
-                'laboratorio': laboratorio, 'estado': True
-            }
-        )
-        if not creado:
-            producto.barras = barras
-            producto.descripcion = descripcion
-            producto.laboratorio = laboratorio
-            producto.save()
+        filas_parseadas.append({
+            'codigo': codigo,
+            'barras': barras,
+            'descripcion': descripcion,
+            'laboratorio': laboratorio,
+            'stock': float(fila[col_stock]) if fila[col_stock] else 0,
+            'costo_prom': float(fila[col_costo_prom]) if fila[col_costo_prom] else 0,
+            'precio_venta': float(fila[col_precio_venta]) if fila[col_precio_venta] else 0,
+        })
+        codigos_vistos.add(codigo)
 
-        stock = float(fila[col_stock]) if fila[col_stock] else 0
-        costo_prom = float(fila[col_costo_prom]) if fila[col_costo_prom] else 0
-        precio_venta = float(fila[col_precio_venta]) if fila[col_precio_venta] else 0
+    if not filas_parseadas:
+        return carga
+
+    # --- 2. Traer productos existentes en una sola consulta ---
+    productos_existentes = {
+        p.codigo_mantis: p
+        for p in Producto.objects.filter(codigo_mantis__in=codigos_vistos)
+    }
+
+    productos_nuevos = {}
+    productos_a_actualizar = []
+
+    for f in filas_parseadas:
+        codigo = f['codigo']
+        producto = productos_existentes.get(codigo)
+
+        if producto is None:
+            if codigo not in productos_nuevos:
+                productos_nuevos[codigo] = Producto(
+                    codigo_mantis=codigo,
+                    barras=f['barras'],
+                    descripcion=f['descripcion'],
+                    laboratorio=f['laboratorio'],
+                    estado=True,
+                )
+        else:
+            producto.barras = f['barras']
+            producto.descripcion = f['descripcion']
+            producto.laboratorio = f['laboratorio']
+            productos_a_actualizar.append(producto)
+
+    # --- 3. Crear/actualizar productos en bloque ---
+    with transaction.atomic():
+        if productos_nuevos:
+            # Producto usa UUID como PK con default en el propio objeto,
+            # así que ya tienen su id_random asignado antes de insertar.
+            Producto.objects.bulk_create(productos_nuevos.values(), batch_size=500)
+            productos_existentes.update(productos_nuevos)
+        if productos_a_actualizar:
+            Producto.objects.bulk_update(
+                productos_a_actualizar,
+                ['barras', 'descripcion', 'laboratorio'],
+                batch_size=500,
+            )
+
+    # --- 4. Armar los DetalleInforme en memoria y guardarlos en bloque ---
+    detalles_nuevos = []
+
+    for f in filas_parseadas:
+        codigo = f['codigo']
+        producto = productos_existentes[codigo]
+
+        stock = f['stock']
+        costo_prom = f['costo_prom']
+        precio_venta = f['precio_venta']
 
         rentabilidad = ((precio_venta - costo_prom) / precio_venta * 100) if precio_venta > 0.01 else 0
         rentabilidad = limitar_decimal(rentabilidad, 8, 4)
@@ -277,7 +331,7 @@ def procesar_archivos(archivo_listado, archivo_ventas):
         else:
             ind_duracion = "SOBRE STOCK"
 
-        DetalleInforme.objects.create(
+        detalles_nuevos.append(DetalleInforme(
             producto=producto,
             carga=carga,
             stock=stock,
@@ -290,7 +344,15 @@ def procesar_archivos(archivo_listado, archivo_ventas):
             periodo_inicio=fecha_inicio_date,
             periodo_fin=fecha_fin_date,
             periodo_meses=periodo_meses,
-        )
+        ))
+
+    # --- 5. Guardar todos los detalles en bloque ---
+    # Nota: no se usa bulk_update aquí porque carga.detalles.all().delete()
+    # ya borró todo lo anterior de esta carga más arriba en la función,
+    # así que TODOS los detalles de este período son nuevos.
+    with transaction.atomic():
+        if detalles_nuevos:
+            DetalleInforme.objects.bulk_create(detalles_nuevos, batch_size=500)
 
     return carga
 
@@ -850,21 +912,31 @@ def convertir(valor):
         return 0
 
 
-def importar_categorizacion_excel(archivo):
+def _contar_celdas_rellenas(fila):
+    return sum(1 for celda in fila if celda.value not in (None, ""))
 
-    wb = load_workbook(archivo, data_only=True)
-    ws = wb.active
 
-    creados = 0
-    actualizados = 0
-    no_encontrados = 0
+def _extraer_categoria_letra(valor):
+    """
+    Convierte 'Categoría C' -> 'C'. Si ya viene como 'C', la deja igual.
+    """
+    texto = str(valor).strip().upper()
+    if texto.startswith("CATEGORÍA") or texto.startswith("CATEGORIA"):
+        return texto.split()[-1]
+    return texto
 
+
+def _leer_filas_formato_viejo(ws):
+    """
+    Devuelve una lista de tuplas (codigo, categoria, analisis) ya parseadas,
+    sin tocar la base de datos.
+    """
+    registros = []
     for fila in ws.iter_rows(min_row=3):
 
         categoria = fila[2].value          # C
         codigo = fila[3].value             # D
 
-        # Estas son las columnas de la fórmula
         valor_pm = convertir(fila[8].value)        # I
         valor_saludia = convertir(fila[10].value)  # K
 
@@ -872,42 +944,107 @@ def importar_categorizacion_excel(archivo):
             continue
 
         codigo = str(codigo).strip()
-
         categoria = str(categoria).strip().upper()
+        analisis = "vende mas PM" if valor_pm > valor_saludia else "vende mas Saludia"
 
-        if valor_pm > valor_saludia:
-            analisis = "vende mas PM"
-        else:
-            analisis = "vende mas Saludia"
+        registros.append((codigo, categoria, analisis))
+    return registros
 
-        try:
 
-            producto = Producto.objects.get(
-                codigo_mantis=codigo
-            )
+def _importar_categorizacion_formato_viejo(ws):
+    registros = _leer_filas_formato_viejo(ws)
+    return _guardar_categorizaciones_bulk(registros)
 
-        except Producto.DoesNotExist:
 
-            no_encontrados += 1
+def _leer_filas_formato_nuevo(ws):
+    """
+    Col A -> Código Mantis
+    Col C -> Categoría (ej: 'Categoría C')
+    Col D -> Análisis
+    Encabezado en fila 1, datos desde fila 2.
+    """
+    registros = []
+    for fila in ws.iter_rows(min_row=2):
+
+        codigo = fila[0].value       # A
+        categoria = fila[2].value    # C
+        analisis = fila[3].value     # D
+
+        if not codigo:
             continue
 
-        _, creado = Categorizacion.objects.update_or_create(
+        codigo = str(codigo).strip()
+        categoria = _extraer_categoria_letra(categoria) if categoria else ""
+        analisis = str(analisis).strip() if analisis else ""
 
-            producto=producto,
+        registros.append((codigo, categoria, analisis))
+    return registros
 
-            defaults={
 
-                "tipo_categoria": categoria,
-                "analisis": analisis
+def _importar_categorizacion_formato_nuevo(ws):
+    registros = _leer_filas_formato_nuevo(ws)
+    return _guardar_categorizaciones_bulk(registros)
 
-            }
 
-        )
+def _guardar_categorizaciones_bulk(registros):
+    """
+    registros: lista de tuplas (codigo, categoria, analisis)
+    Hace el guardado en batch: 1 query para traer productos,
+    1 query para traer categorizaciones existentes,
+    1 bulk_create y 1 bulk_update.
+    """
+    codigos = [r[0] for r in registros]
 
-        if creado:
-            creados += 1
+    productos = Producto.objects.filter(codigo_mantis__in=codigos)
+    productos_por_codigo = {p.codigo_mantis: p for p in productos}
+
+    no_encontrados = 0
+    validos = []
+    for codigo, categoria, analisis in registros:
+        producto = productos_por_codigo.get(codigo)
+        if not producto:
+            no_encontrados += 1
+            continue
+        validos.append((producto, categoria, analisis))
+
+    producto_ids = [p.pk for p, _, _ in validos]
+    existentes = Categorizacion.objects.filter(producto_id__in=producto_ids)
+    existentes_por_producto = {c.producto_id: c for c in existentes}
+
+    a_crear = []
+    a_actualizar = []
+
+    for producto, categoria, analisis in validos:
+        existente = existentes_por_producto.get(producto.pk)
+        if existente:
+            existente.tipo_categoria = categoria
+            existente.analisis = analisis
+            a_actualizar.append(existente)
         else:
-            actualizados += 1
+            a_crear.append(Categorizacion(
+                producto=producto,
+                tipo_categoria=categoria,
+                analisis=analisis,
+            ))
+
+    with transaction.atomic():
+        if a_crear:
+            Categorizacion.objects.bulk_create(a_crear)
+        if a_actualizar:
+            Categorizacion.objects.bulk_update(a_actualizar, ["tipo_categoria", "analisis"])
+
+    return len(a_crear), len(a_actualizar), no_encontrados
+
+
+def importar_categorizacion_excel(archivo):
+
+    wb = load_workbook(archivo, data_only=True)
+    ws = wb.active
+
+    if ws.max_column > 5:
+        creados, actualizados, no_encontrados = _importar_categorizacion_formato_viejo(ws)
+    else:
+        creados, actualizados, no_encontrados = _importar_categorizacion_formato_nuevo(ws)
 
     return (
         f"Creados: {creados} | "
@@ -1208,96 +1345,114 @@ def _leer_filas_excel(archivo):
 # EXTRACCIÓN POR TIPO DE ARCHIVO
 # (ahora trabajan sobre la lista de filas ya normalizada, no sobre ws)
 # ─────────────────────────────────────────────
-def _extraer_detallado_compras(filas):
-    """
-    Col D  (índice 3)  -> Código      (encabezado fila 5 -> índice 4, datos desde fila 6 -> índice 5)
-    Col AV (índice 47) -> Lote
-    Col AW (índice 48) -> Fecha Vencimiento
-    """
-    registros = []
-    for fila in filas[5:]:  # datos desde la fila 6 (índice 5)
-        if len(fila) <= 48:
-            continue
-        codigo = _limpiar_texto(fila[3])
-        lote = _limpiar_texto(fila[47])
-        fecha_venc = _parsear_fecha(fila[48])
-
-        if not codigo or not lote or not fecha_venc:
-            continue
-
-        registros.append({"codigo": codigo, "lote": lote, "fecha_vencimiento": fecha_venc})
-    return registros
-
-
 def _extraer_fechas_vencimiento(filas):
     """
     Col A (índice 0)  -> Código Artículo  (encabezado fila 3 -> índice 2, datos desde fila 4 -> índice 3)
     Col K (índice 10) -> Lote
     Col L (índice 11) -> Lote Vencimiento
+    Col M (índice 12) -> Unidades
     """
     registros = []
     for fila in filas[3:]:  # datos desde la fila 4 (índice 3)
-        if len(fila) <= 11:
+        if len(fila) <= 12:
             continue
         codigo = _limpiar_texto(fila[0])
         lote = _limpiar_texto(fila[10])
         fecha_venc = _parsear_fecha(fila[11])
+        unidades = fila[12] if fila[12] not in (None, "") else None
 
         if not codigo or not lote or not fecha_venc:
             continue
 
-        registros.append({"codigo": codigo, "lote": lote, "fecha_vencimiento": fecha_venc})
+        registros.append({
+            "codigo": codigo,
+            "lote": lote,
+            "fecha_vencimiento": fecha_venc,
+            "unidades": unidades,
+        })
     return registros
 
 
 # ─────────────────────────────────────────────
 # IMPORTACIÓN PRINCIPAL
 # ─────────────────────────────────────────────
-def importar_vencimientos_excel(archivo, tipo_archivo):
+def importar_vencimientos_excel(archivo):
     """
-    tipo_archivo: 'detallado_compras' | 'fecha_vencimiento'
+    Formato único de archivo (Codigo Articulo, Lote, Lote Vencimiento).
     Soporta archivos .xlsx y .xls indistintamente.
+
+    Versión optimizada: en vez de 2 queries por fila (.get() del producto
+    + .get_or_create() del vencimiento), se hace todo en un puñado de
+    consultas totales, sin importar cuántas filas tenga el archivo.
     """
     try:
         filas = _leer_filas_excel(archivo)
     except ValueError as e:
         return str(e), []
 
-    if tipo_archivo == "detallado_compras":
-        registros = _extraer_detallado_compras(filas)
-    elif tipo_archivo == "fecha_vencimiento":
-        registros = _extraer_fechas_vencimiento(filas)
-    else:
-        return "Tipo de archivo no reconocido.", []
+    registros = _extraer_fechas_vencimiento(filas)
 
-    creados = 0
-    ya_existian = 0
+    if not registros:
+        return "No se encontraron registros válidos en el archivo.", []
+
+    # --- 1. Traer todos los productos involucrados en una sola consulta ---
+    codigos = {reg["codigo"] for reg in registros}
+    productos_por_codigo = {
+        p.codigo_mantis: p
+        for p in Producto.objects.filter(codigo_mantis__in=codigos)
+    }
+
     no_encontrados = []
-
+    validos = []
     for reg in registros:
-        codigo = reg["codigo"]
-        lote = reg["lote"]
-        fecha_venc = reg["fecha_vencimiento"]
+        producto = productos_por_codigo.get(reg["codigo"])
+        if not producto:
+            no_encontrados.append(reg["codigo"])
+            continue
+        validos.append((producto, reg["lote"], reg["fecha_vencimiento"], reg.get("unidades")))
 
-        try:
-            producto = Producto.objects.get(codigo_mantis=codigo)
-        except Producto.DoesNotExist:
-            no_encontrados.append(codigo)
+    if not validos:
+        mensaje = (
+            f"Creados: 0 | Ya existían (omitidos): 0 | "
+            f"Productos no encontrados: {len(no_encontrados)}"
+        )
+        return mensaje, no_encontrados
+
+    # --- 2. Traer los vencimientos ya existentes (producto, lote) en una sola consulta ---
+    producto_ids = {p.pk for p, _, _, _ in validos}
+    existentes = set(
+        Vencimiento.objects
+        .filter(producto_id__in=producto_ids)
+        .values_list("producto_id", "lote")
+    )
+
+    # --- 3. Separar en "a crear" y "ya existían", evitando duplicados dentro del mismo archivo ---
+    a_crear = []
+    claves_vistas = set()
+    ya_existian = 0
+
+    for producto, lote, fecha_venc, unidades in validos:
+        clave = (producto.pk, lote)
+
+        if clave in existentes or clave in claves_vistas:
+            ya_existian += 1
             continue
 
-        _, creado = Vencimiento.objects.get_or_create(
+        claves_vistas.add(clave)
+        a_crear.append(Vencimiento(
             producto=producto,
             lote=lote,
-            defaults={"fecha_vencimiento": fecha_venc},
-        )
+            fecha_vencimiento=fecha_venc,
+            unidades=unidades,
+        ))
 
-        if creado:
-            creados += 1
-        else:
-            ya_existian += 1
+    # --- 4. Guardar en bloque dentro de una sola transacción ---
+    with transaction.atomic():
+        if a_crear:
+            Vencimiento.objects.bulk_create(a_crear, batch_size=500)
 
     mensaje = (
-        f"Creados: {creados} | "
+        f"Creados: {len(a_crear)} | "
         f"Ya existían (omitidos): {ya_existian} | "
         f"Productos no encontrados: {len(no_encontrados)}"
     )
