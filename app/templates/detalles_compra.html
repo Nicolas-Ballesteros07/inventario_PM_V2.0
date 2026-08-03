@@ -643,24 +643,28 @@
                 ocultarOverlay(overlayCarga);
 
                 if (data.status === 'success') {
-                    // Éxito: mostrar mensaje y recargar al cerrar
-                    document.getElementById('exitoMensaje').textContent =
-                        data.message || 'Las compras se han cargado correctamente.';
+                    // Éxito: mostrar solo un resumen con cantidades, sin listar registros
+                    let msg = data.message || 'Las compras se han cargado correctamente.';
+                    const noEncontrados = data.no_encontrados ? data.no_encontrados.length : 0;
+                    if (noEncontrados > 0) {
+                        msg += ` (${noEncontrados} código${noEncontrados !== 1 ? 's' : ''} no encontrado${noEncontrados !== 1 ? 's' : ''})`;
+                    }
+                    document.getElementById('exitoMensaje').textContent = msg;
                     mostrarOverlay(overlayExito);
                 } else {
                     // Error controlado (devuelto por la vista)
                     document.getElementById('errorTitulo').textContent =
                         data.title || 'Error al procesar';
-                    document.getElementById('errorMensaje').textContent =
-                        data.message || 'Ocurrió un error inesperado.';
 
-                    const errorLista = document.getElementById('errorLista');
-                    if (data.errors && data.errors.length) {
-                        errorLista.style.display = 'block';
-                        errorLista.innerHTML = data.errors.map(e => `<li>${e}</li>`).join('');
-                    } else {
-                        errorLista.style.display = 'none';
+                    const totalErrores = data.errors ? data.errors.length : 0;
+                    let msgError = data.message || 'Ocurrió un error inesperado.';
+                    if (totalErrores > 0) {
+                        msgError += ` (${totalErrores} error${totalErrores !== 1 ? 'es' : ''} encontrado${totalErrores !== 1 ? 's' : ''})`;
                     }
+                    document.getElementById('errorMensaje').textContent = msgError;
+
+                    // Ya no se listan los errores individuales, solo la cantidad en el mensaje
+                    document.getElementById('errorLista').style.display = 'none';
                     mostrarOverlay(overlayError);
                 }
             } catch (error) {

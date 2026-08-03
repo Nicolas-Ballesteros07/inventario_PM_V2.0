@@ -635,9 +635,12 @@
             .then(data => {
                 ocultarOverlay(overlayCarga);
                 if (data.status === 'success'){
-                    let msg = data.message || 'Archivo procesado correctamente.';
-                    if (data.no_encontrados && data.no_encontrados.length){
-                        msg += ` Códigos no encontrados: ${data.no_encontrados.join(', ')}`;
+                    const totalAgregados = data.agregados || (data.no_encontrados ? (data.total_procesados - data.no_encontrados.length) : null);
+                    const totalNoEncontrados = data.no_encontrados ? data.no_encontrados.length : 0;
+
+                    let msg = `Se agregaron ${totalAgregados ?? data.message ?? '0'} registros.`;
+                    if (totalNoEncontrados > 0){
+                        msg += ` ${totalNoEncontrados} código${totalNoEncontrados !== 1 ? 's' : ''} no encontrado${totalNoEncontrados !== 1 ? 's' : ''}.`;
                     }
                     mostrarExito(msg);
                 } else {

@@ -857,7 +857,7 @@
             });
         });
 
-        // Envío AJAX formulario Excel (modal)
+        // Envío AJAX formulario Excel (modal) - MODIFICADO SEGÚN SOLICITUD
         document.getElementById('formExcelCategorizacion').addEventListener('submit', function(e){
             e.preventDefault();
             const form = e.target;
@@ -873,11 +873,18 @@
             .then(data => {
                 ocultarOverlay(overlayCarga);
                 if (data.status === 'success'){
-                    mostrarExito(data.message || 'Archivo procesado correctamente.');
+                    let msg = data.message || 'Archivo procesado correctamente.';
+                    const noEncontrados = data.no_encontrados ? data.no_encontrados.length : 0;
+                    if (noEncontrados > 0){
+                        msg += ` (${noEncontrados} código${noEncontrados !== 1 ? 's' : ''} no encontrado${noEncontrados !== 1 ? 's' : ''})`;
+                    }
+                    mostrarExito(msg);
                 } else if (data.status === 'warning'){
-                    mostrarError('Advertencia', data.message, data.errors, 'advertencia');
+                    const totalErrores = data.errors ? data.errors.length : 0;
+                    mostrarError('Advertencia', totalErrores > 0 ? `${data.message} (${totalErrores} elemento${totalErrores !== 1 ? 's' : ''} con observaciones)` : data.message, [], 'advertencia');
                 } else {
-                    mostrarError('Error', data.message, data.errors, 'error');
+                    const totalErrores = data.errors ? data.errors.length : 0;
+                    mostrarError('Error', totalErrores > 0 ? `${data.message} (${totalErrores} error${totalErrores !== 1 ? 'es' : ''} encontrado${totalErrores !== 1 ? 's' : ''})` : data.message, [], 'error');
                 }
             })
             .catch(() => {

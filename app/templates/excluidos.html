@@ -804,7 +804,10 @@
                 if (data.status === 'success') {
                     mostrarExito(data.message || 'Producto reincorporado.');
                 } else {
-                    mostrarError('Error', data.message, data.errors, 'error');
+                    // Cambio: mostrar solo el conteo de errores, no la lista completa
+                    const totalErrores = data.errors ? data.errors.length : 0;
+                    const msg = totalErrores > 0 ? `${data.message} (${totalErrores} error${totalErrores !== 1 ? 'es' : ''})` : data.message;
+                    mostrarError('Error', msg, [], 'error');
                 }
                 idDesexcluirPendiente = null;
             })
@@ -840,11 +843,23 @@
                 .then(data => {
                     ocultarOverlay(overlayCarga);
                     if (data.status === 'success') {
-                        mostrarExito(data.message || mensajeExito);
+                        // Mostrar cantidad de no encontrados si existe
+                        let msg = data.message || mensajeExito;
+                        const noEncontrados = data.no_encontrados ? data.no_encontrados.length : 0;
+                        if (noEncontrados > 0) {
+                            msg += ` (${noEncontrados} código${noEncontrados !== 1 ? 's' : ''} no encontrado${noEncontrados !== 1 ? 's' : ''})`;
+                        }
+                        mostrarExito(msg);
                     } else if (data.status === 'warning') {
-                        mostrarError('Advertencia', data.message, data.errors, 'advertencia');
+                        // Mostrar conteo de observaciones
+                        const totalErrores = data.errors ? data.errors.length : 0;
+                        const msg = totalErrores > 0 ? `${data.message} (${totalErrores} observación${totalErrores !== 1 ? 'es' : ''})` : data.message;
+                        mostrarError('Advertencia', msg, [], 'advertencia');
                     } else {
-                        mostrarError('Error', data.message, data.errors, 'error');
+                        // Mostrar conteo de errores
+                        const totalErrores = data.errors ? data.errors.length : 0;
+                        const msg = totalErrores > 0 ? `${data.message} (${totalErrores} error${totalErrores !== 1 ? 'es' : ''})` : data.message;
+                        mostrarError('Error', msg, [], 'error');
                     }
                 })
                 .catch(() => {
