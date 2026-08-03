@@ -21,8 +21,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-bg7(=d5xs9km@u$g&+fftasb(&z%$o&4%26dxg1io+a(x5px4x'
 
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -75,7 +75,7 @@ WSGI_APPLICATION = 'app.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_fbaV3ZT4QtqU@ep-orange-credit-ayyu4kvg-pooler.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"),
+        default=os.environ.get("DATABASE_URL", ""),
         conn_max_age=600,
         ssl_require=True
     )
