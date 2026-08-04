@@ -305,6 +305,7 @@ def preparar_datos_productos_con_compras(productos):
             datos.append({
                 'codigo': detalle.producto.codigo_mantis,
                 'nombre': detalle.producto.descripcion,
+                'laboratorio': detalle.producto.laboratorio,
                 'duracion': detalle.duracion,
                 'solicitar': detalle.solicitar,
                 'proveedor': '',
@@ -319,6 +320,7 @@ def preparar_datos_productos_con_compras(productos):
                 datos.append({
                     'codigo': detalle.producto.codigo_mantis,
                     'nombre': detalle.producto.descripcion,
+                    'laboratorio': detalle.producto.laboratorio,
                     'duracion': detalle.duracion,
                     'solicitar': detalle.solicitar,
                     'proveedor': compra.proveedor,
@@ -362,9 +364,8 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
 
     # --- Encabezados Hoja1 ---
     headers = [
-        "Código", "Nombre", "Duración", "Cantidad a Solicitar",
-        "Proveedor", "Categoría", "Análisis", "Fecha de Compra", "Último Costo","Seleccionar"
-
+        "Código", "Nombre", "Laboratorio", "Duración", "Cantidad a Solicitar",
+        "Proveedor", "Categoría", "Análisis", "Fecha de Compra", "Último Costo", "Seleccionar"
     ]
     ws1.append(headers)
     header_font = Font(bold=True, color="FFFFFF")
@@ -382,16 +383,16 @@ def generar_excel_reporte(productos, titulo="Productos con baja duración"):
     # DESPUÉS
     for d in datos:
         row = [
-            d['codigo'], d['nombre'], d['duracion'], d['solicitar'],
+            d['codigo'], d['nombre'], d['laboratorio'], d['duracion'], d['solicitar'],
             d['proveedor'], d['categoria'], d['analisis'],
             d['fecha_compra'].strftime("%d/%m/%Y") if d['fecha_compra'] else "",
             d['costo'],
             "No",
         ]
         ws1.append(row)
-        dv.add(ws1.cell(row=ws1.max_row, column=10))  # columna J (10), "Seleccionar" — la macro depende de esto
+        dv.add(ws1.cell(row=ws1.max_row, column=11))  # columna K (11), "Seleccionar" — la macro depende de esto
 
-    ws1.auto_filter.ref = f"A1:J{ws1.max_row}"  # rango hasta columna J (ahora 10 columnas)
+    ws1.auto_filter.ref = f"A1:K{ws1.max_row}"  # rango hasta columna K (ahora 11 columnas)
 
     for col in ws1.columns:
         max_length = 0
@@ -460,6 +461,7 @@ def generar_reporte_productos_excluidos():
         ws.column_dimensions[columna[0].column_letter].width = ancho + 5
 
     return wb
+
 # utils para formatear unidades de manera consistente en los reportes de vencimientos y categorizaciones.
 def _formatear_unidades(valor):
     if valor is None:

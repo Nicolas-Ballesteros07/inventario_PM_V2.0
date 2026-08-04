@@ -642,7 +642,7 @@ def procesar_archivo_compras(archivo):
     sin cambiar el comportamiento ni el resultado final.
     """
     archivo.seek(0)
-    wb = openpyxl.load_workbook(archivo, data_only=True, read_only=True)
+    wb = openpyxl.load_workbook(archivo, data_only=True)
     ws = wb.active
 
     fecha_inicio = _parsear_fecha_compra(ws['B4'].value)
